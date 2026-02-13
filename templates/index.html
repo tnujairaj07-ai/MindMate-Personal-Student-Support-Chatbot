@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <!-- CSS link -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+</head>
+<body>
+  <div id="app-root">
+
+    <!-- HEADER -->
+    <header>
+      <div class="logo">
+        <button class="mobile-menu-btn" id="mobile-menu-btn" type="button">
+          ☰
+        </button>
+        <div class="logo-icon"></div>
+        <div class="logo-text">MindMate</div>
+      </div>
+      <div class="user-info" id="header-user-info">Not logged in</div>
+    </header>
+    
+    <main>
+      <!-- LOGIN SCREEN -->
+      <section id="login-screen">
+        <div class="login-card">
+          <div class="login-title">Welcome</div>
+          <div class="login-subtitle">
+            A personal mental wellbeing & academic AI assistant for your campus.
+          </div>
+
+          <div class="login-row">
+            <label for="login-email">Email or University ID</label>
+            <input id="login-email" type="text" placeholder="example@university.ac.in" />
+          </div>
+
+          <div class="login-row">
+            <label for="login-password">Password</label>
+            <input id="login-password" type="password" placeholder="••••••••" />
+          </div>
+
+          <div class="login-row">
+            <label for="login-role">Login as</label>
+            <select id="login-role">
+              <option value="student">Student</option>
+              <option value="admin">Faculty / Admin</option>
+            </select>
+          </div>
+
+          <div class="login-actions">
+            <button class="btn btn-ghost" type="button" onclick="toggleAuthMode()">
+              <span id="auth-toggle-text">New here? Create account</span>
+            </button>
+            <button class="btn btn-primary" type="button" onclick="handleAuthSubmit()">
+              <span id="auth-submit-text">Login</span>
+            </button>
+          </div>
+
+          <div class="login-footer">
+            <div style="margin-bottom:8px;font-size:12px;color:#9ca3af;">
+              Or continue with
+            </div>
+            <div class="social-row">
+              <button class="btn social-btn" type="button" onclick="loginWith('google')">Google</button>
+              <button class="btn social-btn" type="button" onclick="loginWith('github')">GitHub</button>
+              <button class="btn social-btn" type="button" onclick="loginWith('microsoft')">Microsoft</button>
+              <button class="btn social-btn" type="button" onclick="loginWith('facebook')">Facebook</button>
+            </div>
+            <div style="margin-top:10px;font-size:11px;color:#6b7280;">
+              Your chats stay private. The college only sees anonymous trends to improve support.
+            </div>
+          </div>
+        </div> <!-- CLOSES .login-card -->
+      </section>
+
+      <!-- APP LAYOUT -->
+      <section id="app-layout">
+        <div class="app-body">
+          <!-- SIDEBAR -->
+          <aside class="sidebar">
+            <div class="sidebar-section-title">Main</div>
+            <div class="nav-item active" data-view="chat" onclick="switchView('chat', this)">
+              <span class="icon">💬</span> Chat
+            </div>
+            <div class="nav-item" data-view="academics" onclick="switchView('academics', this)">
+              <span class="icon">📚</span> Academics
+            </div>
+
+            <div class="sidebar-section-title admin-only">Admin</div>
+            <div class="nav-item admin-only" data-view="insights" onclick="switchView('insights', this)">
+              <span class="icon">📊</span> Insights
+            </div>
+            <div class="nav-item admin-only" data-view="manage" onclick="switchView('manage', this)">
+              <span class="icon">🛠</span> Manage content
+            </div>
+
+            <div class="sidebar-section-title">Account</div>
+            <div class="nav-item" data-view="settings" onclick="switchView('settings', this)">
+              <span class="icon">⚙️</span> Settings
+            </div>
+            <div class="nav-item" data-view="profile" onclick="switchView('profile', this)">
+              <span class="icon">👤</span> Profile
+            </div>
+
+            <div class="sidebar-footer">
+              <div style="cursor:pointer;" onclick="handleLogout()">Log out</div>
+            </div>
+          </aside>
+
+          <!-- CENTER -->
+          <section class="center">
+            <div class="center-header">
+              <div>
+                <div class="center-header-title" id="center-title">Chat</div>
+                <div class="center-header-subtitle" id="center-subtitle">
+                  Talk to your digital friend about stress, studies, and campus life.
+                </div>
+              </div>
+              <div style="font-size:12px; color:#9ca3af;">
+                Mode:
+                <select id="chat-mode" style="background:#020617;color:#e5e7eb;border:1px solid #374151;border-radius:999px;padding:3px 8px;font-size:12px;">
+                  <option value="auto">Auto</option>
+                  <option value="wellbeing">Wellbeing</option>
+                  <option value="academics">Academics</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="center-content">
+              <!-- CHAT VIEW -->
+              <div id="view-chat" class="chat-window">
+                <div class="chat-messages" id="chat-messages">
+                  <div class="msg-row bot">
+                    <div class="msg-bubble bot">
+                      Hey! I’m your Academic AI assistant, MindMate. You can talk to me in English / Hindi / Hinglish about stress, exams, or anything on your mind.
+                    </div>
+                  </div>
+                </div>
+                <div class="quick-chip-container">
+                  <div class="quick-chip" onclick="sendQuick('I feel stressed about exams')">I feel stressed about exams</div>
+                  <div class="quick-chip" onclick="sendQuick('Show my upcoming deadlines')">Show my upcoming deadlines</div>
+                  <div class="quick-chip" onclick="sendQuick('Give me project ideas')">Project ideas</div>
+                  <div class="quick-chip" onclick="sendQuick('I am feeling low today')">I am feeling low</div>
+                </div>
+                <div class="chat-input-row">
+                  <textarea id="chat-input" placeholder="Type your message..."></textarea>
+                  <button class="btn btn-primary" type="button" onclick="handleSend()">Send</button>
+                </div>
+              </div>
+
+              <!-- ACADEMICS VIEW -->
+              <div id="view-academics" style="display:none;"></div>
+
+              <!-- INSIGHTS VIEW (ADMIN) -->
+              <div id="view-insights" style="display:none;">
+                <div class="insights-grid">
+                  <div class="card">
+                    <div class="card-title">Overall wellbeing</div>
+                    <div class="card-body">
+                      <div id="insights-overall" style="font-size:12px;color:#d1d5db;">
+                        Loading...
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="card">
+                    <div class="card-title">Top stress topics</div>
+                    <div class="card-body">
+                      <ul id="insights-top-intents"
+                         style="list-style:none;padding-left:0;font-size:12px;">
+                        <!-- Filled by JS -->
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div class="card">
+                    <div class="card-title">Complaints by department</div>
+                    <div class="card-body">
+                      <ul id="insights-complaints-dept"
+                          style="list-style:none;padding-left:0;font-size:12px;">
+                        <!-- Filled by JS -->
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- MANAGE CONTENT (ADMIN) -->
+              <div id="view-manage" style="display:none;">
+                <div class="card">
+                  <div class="card-header-main">Manage notices</div>
+                  <div class="card-desc">Create, edit, or remove notices visible to students.</div>
+                  <button class="btn btn-primary" type="button" onclick="alert('Open add notice dialog')">Add notice</button>
+                </div>
+                <br />
+                <div class="card">
+                  <div class="card-header-main">Manage resources</div>
+                  <div class="card-desc">Upload PYQs, update syllabus, add project summaries.</div>
+                  <button class="btn btn-primary" type="button" onclick="alert('Open add resource dialog')">Add resource</button>
+                </div>
+                <br>
+                <div class="card">
+                  <div class="card-header-main">Manage deadlines</div>
+                  <div class="card-desc">
+                    Add important assignment, exam, or project deadlines that students will see on their dashboard.
+                  </div>
+
+                  <div class="form-row">
+                    <label for="deadline-label">Title</label>
+                    <input id="deadline-label" type="text" placeholder="e.g. DBMS Assignment 1 submission" />
+                  </div>
+
+                  <div class="form-row">
+                    <label for="deadline-date">Due date</label>
+                    <input id="deadline-date" type="date" />
+                  </div>
+
+                  <div class="form-row">
+                    <label for="deadline-type">Type</label>
+                    <select id="deadline-type">
+                      <option value="assignment">Assignment</option>
+                      <option value="exam">Exam</option>
+                      <option value="project">Project</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+
+                  <div class="form-row">
+                    <label for="deadline-course">Course (optional)</label>
+                    <input id="deadline-course" type="text" placeholder="e.g. B.Tech CSE" />
+                  </div>
+
+                  <div class="form-row">
+                    <label for="deadline-subject">Subject (optional)</label>
+                    <input id="deadline-subject" type="text" placeholder="e.g. DBMS" />
+                  </div>
+
+                  <button class="btn btn-primary" type="button" onclick="submitDeadline()">
+                    Add deadline
+                  </button>
+
+                  <div id="deadline-status" style="font-size:11px;color:#9ca3af;margin-top:6px;"></div>
+                </div>
+              </div>
+
+              <!-- SETTINGS VIEW -->
+              <div id="view-settings" style="display:none;">
+                <div class="card">
+                  <div class="card-header-main">Appearance</div>
+                  <div class="form-row">
+                    <label>Theme</label>
+                    <select>
+                      <option>Dark</option>
+                      <option>Light (coming soon)</option>
+                    </select>
+                  </div>
+                </div>
+                <br />
+                <div class="card">
+                  <div class="card-header-main">Language</div>
+                  <div class="form-row">
+                    <label>Preferred language</label>                     
+                    <select>
+                      <option>Auto (English + Hindi)</option>
+                      <option>English</option>
+                      <option>Hindi</option>
+                      <option>Hinglish mix</option>
+                    </select>
+                    <small>Used by the assistant to adapt replies.</small>
+                  </div>
+                </div>
+                <br />
+                <div class="card">
+                  <div class="card-header-main">Privacy</div>
+                  <div class="form-row">
+                    <label>
+                      <input type="checkbox" checked />
+                      Allow my anonymous data to improve the model
+                    </label>
+                    <small>Your raw messages and identity are never shared with faculty.</small>
+                  </div>
+                </div>
+              </div>
+
+              <!-- PROFILE VIEW -->
+              <div id="view-profile" style="display:none;">
+                <div class="card">
+                  <div class="card-header-main">Profile</div>
+                  <div class="form-row">
+                    <label>Name</label>
+                    <input id="profile-name" type="text" value="Student User" />
+                  </div>
+                  <div class="form-row">
+                    <label>Program & Year</label>
+                    <input type="text" value="B.Tech CSE, 1st Year" />
+                  </div>
+                  <div class="form-row">
+                    <label>Email / ID</label>
+                    <input type="text" value="example@university.ac.in" />
+                  </div>
+                  <button class="btn btn-primary" type="button" onclick="alert('Profile saved (demo)')">Save</button>
+                </div>
+                <br />
+                <div class="card">
+                  <div class="card-header-main">Chat history</div>
+                  <p style="font-size:12px; color:#9ca3af;">
+                    You can clear your local conversation history from this device.
+                  </p>
+                  <button class="btn btn-ghost" type="button" onclick="clearChat()">Clear chat history</button>
+                </div>
+                <br>
+                <div class="card">
+                  <div class="card-header-main">Submit a concern</div>
+                  <div class="card-desc">
+                    Share an anonymous concern about timetable, labs, teachers, or campus facilities.
+                  </div>
+
+                  <div class="form-row">
+                    <label for="complaint-name">Name (optional)</label>
+                    <input id="complaint-name" type="text" placeholder="You can leave this blank" />
+                  </div>
+
+                  <div class="form-row">
+                    <label for="complaint-roll">Roll No (optional)</label>
+                    <input id="complaint-roll" type="text" placeholder="e.g. 23CS1001" />
+                  </div>
+
+                  <div class="form-row">
+                    <label for="complaint-dept">Department (optional)</label>
+                    <input id="complaint-dept" type="text" placeholder="e.g. CSE, ECE, MBA" />
+                  </div>
+
+                  <div class="form-row">
+                    <label for="complaint-text">Your concern</label>
+                    <textarea id="complaint-text" rows="3" placeholder="Describe what is bothering you..."></textarea>
+                  </div>
+
+                  <button class="btn btn-primary" type="button" onclick="submitComplaint()">
+                    Submit concern
+                  </button>
+
+                  <div id="complaint-status" style="font-size:11px;color:#9ca3af;margin-top:6px;"></div>
+                </div>
+
+              </div>
+            </div>
+          </section>
+
+          <!-- RIGHT PANEL -->
+          <aside class="right-panel" id="right-panel">
+            <!-- Mood card -->
+            <div class="card">
+              <div class="card-title">Today’s vibe</div>
+              <div class="card-body">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                  <span style="font-size:18px;">🙂</span>
+                  <span>Mostly okay</span>
+                </div>
+                <div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">
+                  Based on your last few messages (demo).
+                </div>
+                <div>
+                  <span class="pill primary" onclick="sendQuick('Give me a small grounding exercise')">Grounding exercise</span>
+                  <span class="pill" onclick="sendQuick('Say something motivating')">Motivation</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick actions -->
+            <div class="card">
+              <div class="card-title">Quick actions</div>
+              <div class="card-body">
+                <div class="pill" onclick="sendQuick('I feel stressed about exams')">Exam stress</div>
+                <div class="pill" onclick="sendQuick('Help me plan my study')">Study plan</div>
+                <div class="pill" onclick="sendQuick('Show my deadlines')">Show deadlines</div>
+                <div class="pill" onclick="sendQuick('Where to find PYQs?')">Find PYQs</div>
+                <div class="pill" onclick="sendQuick('How to contact counselor?')">Counselor info</div>
+              </div>
+            </div>
+
+            <!-- Notices -->
+            <div class="card">
+              <div class="card-title">Latest notices</div>
+              <div class="card-body" id="notices-list">
+                <!-- Filled by JS -->
+              </div>
+            </div>
+
+            <!-- Deadlines -->
+            <div class="card">
+              <div class="card-title">Upcoming deadlines</div>
+              <div class="card-body" id="deadlines-list">
+                <!-- Filled by JS -->
+              </div>
+            </div>
+
+            <!-- Tips -->
+            <div class="card">
+              <div class="card-title">Today’s tip</div>
+              <div class="card-body">
+                <div class="tip-text">
+                  Break study into 25 minute focus blocks with 5 minute breaks. Small steps reduce stress.
+                </div>
+                <div class="link" onclick="sendQuick('Help me create a 25-minute study plan')">
+                  Ask the assistant to plan a block →
+                </div>
+              </div>
+            </div>
+          </aside>
+        </section>
+      </div>
+    </main>
+  </div>
+  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+</body>
+</html>

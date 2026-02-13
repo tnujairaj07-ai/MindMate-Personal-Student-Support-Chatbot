@@ -1,0 +1,430 @@
+# backend/app.py
+import os
+from typing import Optional
+
+from flask import Flask, render_template, request, jsonify, session, abort
+from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
+
+from backend.db import (
+    get_db,
+    close_db,
+    get_notices,
+    get_deadlines,
+    add_deadline,
+    get_syllabus,
+    get_pyqs,
+    get_projects,
+    get_helplines,
+    add_complaint,
+    get_complaints,
+    get_complaints_summary,
+    get_complaints_by_department,
+    get_intent_counts, 
+    log_chat_message,
+)
+from backend.chatbot import get_llm_response # now returns (reply, intent, mood)
+
+# Load variables from .env
+load_dotenv()
+DEMO_MODE = os.environ.get("DEMO_MODE", "false").lower() == "true"
+
+# ----- PATHS -----
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))   # ...\MindMate\backend
+PROJECT_ROOT = os.path.join(BASE_DIR, "..")             # ...\MindMate
+TEMPLATES_DIR = os.path.join(PROJECT_ROOT, "templates")
+STATIC_DIR = os.path.join(PROJECT_ROOT, "static")
+
+# IMPORTANT: point Flask to both template AND static folders
+app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
+app.secret_key = os.environ.get("SECRET_KEY", "dev_secret_change_me")
+app.teardown_appcontext(close_db)
+
+# ---------- HELPERS ----------
+def create_user(email: str, name: str, role: str, password: str):
+    db = get_db()
+    hashed = generate_password_hash(password)
+    db.execute(
+        "INSERT INTO users (email, name, role, password) VALUES (?, ?, ?, ?)",
+        (email, name, role, hashed),
+    )
+    db.commit()
+
+def find_user_by_email(email: str):
+    db = get_db()
+    cur = db.execute("SELECT * FROM users WHERE email = ?", (email,))
+    return cur.fetchone()
+
+def get_or_create_user(email: str, role: str):
+    """
+    Used only for anonymous fallback in /api/chat.
+    In DEMO_MODE, creates a demo user if not exists.
+    In non-demo mode, returns None instead of auto-creating users.
+    """
+    db = get_db()
+    cur = db.execute("SELECT * FROM users WHERE email = ?", (email,))
+    row = cur.fetchone()
+    if row:
+        return row
+
+    if not DEMO_MODE:
+        # In production, do not silently create users
+        return None
+
+    name = "Admin User" if role == "admin" else "Student User"
+    hashed = generate_password_hash("demo")
+    db.execute(
+        "INSERT INTO users (email, name, role, password) VALUES (?, ?, ?, ?)",
+        (email, name, role, hashed),
+    )
+    db.commit()
+    cur = db.execute("SELECT * FROM users WHERE email = ?", (email,))
+    return cur.fetchone()
+
+def save_message(user_id: int, text: str, role: str, intent: Optional[str] = None):
+    db = get_db()
+    db.execute(
+        "INSERT INTO messages (user_id, text, role, intent) VALUES (?, ?, ?, ?)",
+        (user_id, text, role, intent),
+    )
+    db.commit()
+
+def require_admin():
+    user_id = session.get("user_id")
+    if not user_id:
+        abort(401)
+    db = get_db()
+    cur = db.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+    row = cur.fetchone()
+    if not row or row["role"] != "admin":
+        abort(403)
+
+# ---------- AUTH ROUTES ----------
+@app.post("/api/signup")
+def api_signup():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip()
+    name = (data.get("name") or "").strip() or "Student User"
+    role = data.get("role") or "student"
+    password = (data.get("password") or "").strip()
+
+    if not email or not password:
+        return jsonify({"success": False, "error": "Email and password required"}), 400
+
+    if role not in ("student", "admin"):
+        role = "student"
+
+    if find_user_by_email(email):
+        return jsonify({"success": False, "error": "User already exists"}), 400
+
+    create_user(email, name, role, password)
+    user = find_user_by_email(email)
+    session["user_id"] = user["id"]
+
+    return jsonify(
+        {
+            "success": True,
+            "role": user["role"],
+            "name": user["name"],
+            "user_id": user["id"],
+        }
+    )
+
+@app.post("/api/login")
+def api_login():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip()
+    password = (data.get("password") or "").strip()
+
+    if not email or not password:
+        return jsonify({"success": False, "error": "Email and password required"}), 400
+
+    user = find_user_by_email(email)
+    if not user or not check_password_hash(user["password"], password):
+        return jsonify({"success": False, "error": "Invalid credentials"}), 401
+
+    session["user_id"] = user["id"]
+    session["role"] = user["role"]
+
+    return jsonify(
+        {
+            "success": True,
+            "role": user["role"],
+            "name": user["name"],
+            "user_id": user["id"],
+        }
+    )
+
+# ---------- MAIN ROUTES ----------
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+# Simple non-API chat endpoint (kept for demo/testing)
+@app.route("/chat", methods=["POST"])
+def chat():
+    data = request.get_json() or {}
+    user_message = (data.get("message") or "").strip()
+
+    if not user_message:
+        return jsonify({"reply": "Please type a message."})
+
+    # get_llm_response now returns (reply, intent, mood)
+    reply, intent, mood = get_llm_response(user_message)
+    return jsonify({"reply": reply, "intent": intent, "mood": mood})
+
+@app.post("/api/chat")
+def api_chat():
+    data = request.get_json() or {}
+    message = (data.get("message") or "").strip()
+    user_id = data.get("user_id") or session.get("user_id")
+
+    if not message:
+        return (
+            jsonify(success=False, error="Please type something so I can help."),
+            400,
+        )
+
+    # Ensure we have a user (or anonymous demo user)
+    if not user_id:
+        if DEMO_MODE:
+            user = get_or_create_user("anonymous@student.local", "student")
+            if user:
+                user_id = user["id"]
+        else:
+            return (
+                jsonify(success=False, error="Please log in first to chat."),
+                401,
+            )
+
+    try:
+        # Save user message (linked to user)
+        if user_id:
+            save_message(user_id, message, "user", None)
+
+        # NEW: get reply, intent, mood from chatbot
+        reply, intent, mood = get_llm_response(message)
+
+        # Save bot reply with intent
+        if user_id:
+            save_message(user_id, reply, "bot", intent)
+
+        # Also log to chat_messages (session-based, anonymised)
+        session_id = request.cookies.get("session_id") or "anonymous-session"
+        log_chat_message(session_id, "user", message, intent_detected=None)
+        log_chat_message(session_id, "bot", reply, intent_detected=intent)
+
+        # Return all three values to frontend
+        return jsonify(
+            success=True,
+            reply=reply,
+            intent=intent,
+            mood=mood,
+        )
+
+    except Exception as e:
+        print("Error in /api/chat:", e)
+        return (
+            jsonify(
+                success=False,
+                error=(
+                    "Sorry, something went wrong while processing your message. "
+                    "Please try again."
+                ),
+            ),
+            500,
+        )
+
+# ---------- SIMPLE NOTICES (right panel) ----------
+@app.get("/api/notices")
+def api_notices():
+    rows = get_notices()
+    items = [
+        {
+            "title": r["title"],
+            "description": r["description"],
+        }
+        for r in rows[:5]
+    ]
+    return jsonify({"items": items})
+
+@app.get("/api/deadlines")
+def api_deadlines():
+    rows = get_deadlines()
+    items = [
+        {
+            "id": r["id"],
+            "label": r["label"],
+            "due_date": r["due_date"],
+            "course": r["course"],
+            "subject": r["subject"],
+            "type": r["type"],
+        }
+        for r in rows
+    ]
+    return jsonify(items=items)
+
+@app.post("/api/deadlines")
+def api_create_deadline():
+    # restrict to admin
+    role = session.get("role")
+    if role != "admin":
+        return jsonify(success=False, error="Not authorized"), 403
+
+    data = request.get_json() or {}
+    label = (data.get("label") or "").strip()
+    due_date = (data.get("due_date") or "").strip()  # expected format: YYYY-MM-DD
+    course = (data.get("course") or "").strip()
+    subject = (data.get("subject") or "").strip()
+    type_ = (data.get("type") or "").strip() or "assignment"
+    visible_to = (data.get("visible_to") or "").strip() or "student"
+
+    if not label or not due_date:
+        return jsonify(success=False, error="Label and due date are required"), 400
+
+    try:
+        add_deadline(label, due_date, course, subject, type_, visible_to)
+        return jsonify(success=True)
+    except Exception as e:
+        print("Error adding deadline:", e)
+        return jsonify(success=False, error="Failed to add deadline"), 500
+
+# ---------- ACADEMIC DATA APIs (team DB integrated) ----------
+@app.get("/api/academic/notices")
+def api_academic_notices():
+    try:
+        rows = get_notices()
+        items = [{"title": r["title"], "description": r["description"]} for r in rows]
+        return jsonify({"items": items})
+    except Exception as e:
+        print("Error in /api/academic/notices:", e)
+        return jsonify({"items": []}), 500
+
+@app.get("/api/academic/syllabus")
+def api_academic_syllabus():
+    subject = (request.args.get("subject") or "").strip()
+    if not subject:
+        return jsonify({"items": []})
+    try:
+        rows = get_syllabus(subject)
+        items = [{"unit": r["unit"], "topics": r["topics"]} for r in rows]
+        return jsonify({"items": items})
+    except Exception as e:
+        print("Error in /api/academic/syllabus:", e)
+        return jsonify({"items": []}), 500
+
+@app.get("/api/academic/pyqs")
+def api_academic_pyqs():
+    subject = (request.args.get("subject") or "").strip()
+    if not subject:
+        return jsonify({"items": []})
+    try:
+        rows = get_pyqs(subject)
+        items = [{"year": r["year"], "question": r["question"]} for r in rows]
+        return jsonify({"items": items})
+    except Exception as e:
+        print("Error in /api/academic/pyqs:", e)
+        return jsonify({"items": []}), 500
+
+@app.get("/api/academic/projects")
+def api_academic_projects():
+    try:
+        rows = get_projects()
+        items = [
+            {
+                "title": r["title"],
+                "domain": r["domain"],
+                "description": r["description"],
+                "difficulty": r["difficulty"],
+            }
+            for r in rows
+        ]
+        return jsonify({"items": items})
+    except Exception as e:
+        print("Error in /api/academic/projects:", e)
+        return jsonify({"items": []}), 500
+
+@app.get("/api/academic/helplines")
+def api_academic_helplines():
+    try:
+        rows = get_helplines()
+        items = [
+            {
+                "name": r["name"],
+                "phone": r["phone"],
+                "email": r["email"],
+                "available_hours": r["available_hours"],
+                "type": r["type"],
+            }
+            for r in rows
+        ]
+        return jsonify({"items": items})
+    except Exception as e:
+        print("Error in /api/academic/helplines:", e)
+        return jsonify({"items": []}), 500
+
+# ---------- ADMIN: COMPLAINTS & SUMMARY ----------
+@app.get("/api/admin/complaints")
+def api_admin_complaints():
+    require_admin()
+    try:
+        rows = get_complaints()
+        items = [dict(r) for r in rows] if rows and not isinstance(rows[0], dict) else rows
+        return jsonify({"items": items})
+    except Exception as e:
+        print("Error in /api/admin/complaints:", e)
+        return jsonify({"items": []}), 500
+
+@app.get("/api/admin/complaints/summary")
+def api_admin_complaints_summary():
+    require_admin()
+    try:
+        rows = get_complaints_summary()
+        items = [dict(r) for r in rows] if rows and not isinstance(rows[0], dict) else rows
+        return jsonify({"items": items})
+    except Exception as e:
+        print("Error in /api/admin/complaints/summary:", e)
+        return jsonify({"items": []}), 500
+    
+@app.post("/api/complaints")
+def api_submit_complaint():
+    data = request.get_json() or {}
+    studentname = (data.get("studentname") or "").strip()
+    rollno = (data.get("rollno") or "").strip()
+    department = (data.get("department") or "").strip()
+    complainttext = (data.get("complainttext") or "").strip()
+
+    if not complainttext:
+        return jsonify(success=False, error="Complaint text is required"), 400
+
+    try:
+        add_complaint(studentname or "Anonymous", rollno or "", department or "", complainttext)
+        return jsonify(success=True)
+    except Exception as e:
+        print("Error saving complaint:", e)
+        return jsonify(success=False, error="Failed to save complaint"), 500
+    
+# ---------- INSIGHTS ----------
+@app.get("/api/insights/overview")
+def api_insights_overview():
+    # Complaints grouped by department
+    comp_rows = get_complaints_by_department()
+    complaints_by_dept = [
+        {"department": r["department"] or "Unknown", "count": r["count"]}
+        for r in comp_rows
+    ]
+
+    # Top intents from messages
+    intent_rows = get_intent_counts()
+    intents = [
+        {"intent": r["intent"] or "unknown", "count": r["count"]}
+        for r in intent_rows
+    ]
+
+    return jsonify(
+        complaints_by_department=complaints_by_dept,
+        intents=intents,
+    )
+
+if __name__ == "__main__":
+    app.run(debug=True)
