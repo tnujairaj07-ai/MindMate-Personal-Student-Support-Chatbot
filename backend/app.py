@@ -24,6 +24,10 @@ from backend.db import (
     get_complaints_by_department,
     get_intent_counts, 
     log_chat_message,
+    get_user_by_id,
+    get_student_by_email,
+    get_or_create_user_settings,
+    update_user_settings,
 )
 from backend.chatbot import get_llm_response # now returns (reply, intent, mood)
 LOGIN_WINDOW_SECONDS = 60        # time window
@@ -223,6 +227,116 @@ def api_login():
         }
     )
 
+# ---------- PROFILE ROUTES ----------
+@app.get("/api/profile")
+def api_get_profile():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify(success=False, error="Not logged in"), 401
+
+    user = get_user_by_id(user_id)
+    if not user:
+        return jsonify(success=False, error="User not found"), 404
+
+    # try to match with students table by email
+    student = get_student_by_email(user["email"]) if user["email"] else None
+
+    profile = {
+        "name": user["name"],
+        "email": user["email"],
+        "role": user["role"],
+        "roll_no": student["roll_no"] if student else "",
+        "course": student["course"] if student else "",
+        "year": student["year"] if student else None,
+    }
+    return jsonify(success=True, profile=profile)
+
+@app.put("/api/profile")
+def api_update_profile():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify(success=False, error="Not logged in"), 401
+
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+    roll_no = (data.get("roll_no") or "").strip()
+    course = (data.get("course") or "").strip()
+    year = data.get("year")
+
+    db = get_db()
+    if name:
+        db.execute("UPDATE users SET name = ? WHERE id = ?", (name, user_id))
+
+    # upsert into students table using email
+    user = get_user_by_id(user_id)
+    if user and user["email"]:
+        existing = get_student_by_email(user["email"])
+        if existing:
+            db.execute(
+                """
+                UPDATE students
+                SET name = ?, roll_no = ?, course = ?, year = ?
+                WHERE email = ?
+                """,
+                (name or existing["name"], roll_no or existing["roll_no"],
+                 course or existing["course"], year or existing["year"], user["email"]),
+            )
+        else:
+            db.execute(
+                """
+                INSERT INTO students (name, email, roll_no, course, year)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (name or user["name"], user["email"], roll_no, course, year),
+            )
+    db.commit()
+
+    return jsonify(success=True)
+
+# ---------- SETTINGS ROUTES ----------
+@app.get("/api/settings")
+def api_get_settings():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify(success=False, error="Not logged in"), 401
+
+    row = get_or_create_user_settings(user_id)
+    settings = {
+        "theme": row["theme"],
+        "preferred_language": row["preferred_language"],
+        "chat_mode": row["chat_mode"],
+        "allow_analytics": bool(row["allow_analytics"]),
+        "show_deadlines_card": bool(row["show_deadlines_card"]),
+        "show_notices_card": bool(row["show_notices_card"]),
+    }
+    return jsonify(success=True, settings=settings)
+
+@app.put("/api/settings")
+def api_update_settings():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify(success=False, error="Not logged in"), 401
+
+    data = request.get_json() or {}
+    theme = (data.get("theme") or "dark").strip()
+    preferred_language = (data.get("preferred_language") or "auto").strip()
+    chat_mode = (data.get("chat_mode") or "auto").strip()
+
+    allow_analytics = 1 if data.get("allow_analytics", True) else 0
+    show_deadlines_card = 1 if data.get("show_deadlines_card", True) else 0
+    show_notices_card = 1 if data.get("show_notices_card", True) else 0
+
+    update_user_settings(
+        user_id,
+        theme,
+        preferred_language,
+        chat_mode,
+        allow_analytics,
+        show_deadlines_card,
+        show_notices_card,
+    )
+    return jsonify(success=True)
+
 # ---------- MAIN ROUTES ----------
 @app.route("/")
 def index():
@@ -233,6 +347,7 @@ def api_chat():
     data = request.get_json() or {}
     message = (data.get("message") or "").strip()
     user_id = data.get("user_id") or session.get("user_id")
+    mode = (data.get("mode") or "auto").strip()
 
     if not message:
         return (
@@ -262,7 +377,7 @@ def api_chat():
             save_message(user_id, message, "user", None)
 
         # Get reply, intent, mood from chatbot
-        reply, intent, mood = get_llm_response(message)
+        reply, intent, mood = get_llm_response(message, mode=mode)
 
         # Save bot reply with intent
         if user_id:

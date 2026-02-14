@@ -252,9 +252,9 @@
                   <div class="card-header-main">Appearance</div>
                   <div class="form-row">
                     <label>Theme</label>
-                    <select>
-                      <option>Dark</option>
-                      <option>Light (coming soon)</option>
+                    <select id="settings-theme">
+                      <option value="dark">Dark</option>
+                      <option value="light" disabled>Light (coming soon)</option>
                     </select>
                   </div>
                 </div>
@@ -263,12 +263,17 @@
                   <div class="card-header-main">Language</div>
                   <div class="form-row">
                     <label>Preferred language</label>                     
-                    <select>
-                      <option>Auto (English + Hindi)</option>
-                      <option>English</option>
-                      <option>Hindi</option>
-                      <option>Hinglish mix</option>
+                    <select id="settings-language">
+                      <option value="auto">Auto (English + Hindi)</option>
+                      <option value="en">English</option>
+                      <option value="hi">Hindi</option>
+                      <option value="hinglish">Hinglish mix</option>
                     </select>
+                    <input id="settings-allow-analytics" type="checkbox" checked />
+                    <!-- optionally: toggles for cards -->
+                    <input id="settings-show-notices" type="checkbox" checked />
+                    <input id="settings-show-deadlines" type="checkbox" checked />
+
                     <small>Used by the assistant to adapt replies.</small>
                   </div>
                 </div>
@@ -283,25 +288,33 @@
                     <small>Your raw messages and identity are never shared with faculty.</small>
                   </div>
                 </div>
+                <button class="btn btn-primary" type="button" onclick="saveSettings()">Save settings</button>
+                <div id="settings-status" style="font-size:11px;color:#9ca3af;margin-top:6px;"></div>
+
               </div>
 
               <!-- PROFILE VIEW -->
               <div id="view-profile" style="display:none;">
                 <div class="card">
                   <div class="card-header-main">Profile</div>
+
                   <div class="form-row">
                     <label>Name</label>
                     <input id="profile-name" type="text" value="Student User" />
                   </div>
+
                   <div class="form-row">
-                    <label>Program & Year</label>
-                    <input type="text" value="B.Tech CSE, 1st Year" />
+                    <label>Program &amp; Year</label>
+                    <input id="profile-program" type="text" value="B.Tech CSE, 1st Year" />
                   </div>
+
                   <div class="form-row">
                     <label>Email / ID</label>
-                    <input type="text" value="example@university.ac.in" />
+                    <input id="profile-email" type="text" value="example@university.ac.in" />
                   </div>
-                  <button class="btn btn-primary" type="button" onclick="alert('Profile saved (demo)')">Save</button>
+
+                  <button class="btn btn-primary" type="button" onclick="saveProfile()">Save</button>
+                  <div id="profile-status" style="font-size:11px;color:#9ca3af;margin-top:6px;"></div>
                 </div>
                 <br />
                 <div class="card">

@@ -176,3 +176,70 @@ def log_chat_message(session_id: str, sender: str, message_text: str, intent_det
         (session_id, sender, message_text, intent_detected),
     )
     db.commit()
+
+# backend/db.py
+
+def get_user_by_id(user_id: int):
+    db = get_db()
+    cur = db.execute(
+        "SELECT id, email, name, role FROM users WHERE id = ?",
+        (user_id,),
+    )
+    return cur.fetchone()
+
+def get_student_by_email(email: str):
+    db = get_db()
+    cur = db.execute(
+        "SELECT student_id, name, email, roll_no, course, year FROM students WHERE email = ?",
+        (email,),
+    )
+    return cur.fetchone()
+
+def get_or_create_user_settings(user_id: int):
+    db = get_db()
+    cur = db.execute(
+        "SELECT * FROM user_settings WHERE user_id = ?",
+        (user_id,),
+    )
+    row = cur.fetchone()
+    if row:
+        return row
+    db.execute("INSERT INTO user_settings (user_id) VALUES (?)", (user_id,))
+    db.commit()
+    cur = db.execute("SELECT * FROM user_settings WHERE user_id = ?", (user_id,))
+    return cur.fetchone()
+
+def update_user_settings(
+    user_id: int,
+    theme: str,
+    preferred_language: str,
+    chat_mode: str,
+    allow_analytics: int,
+    show_deadlines_card: int,
+    show_notices_card: int,
+):
+    db = get_db()
+    db.execute(
+        """
+        UPDATE user_settings
+        SET theme = ?,
+            preferred_language = ?,
+            chat_mode = ?,
+            allow_analytics = ?,
+            show_deadlines_card = ?,
+            show_notices_card = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+        """,
+        (
+            theme,
+            preferred_language,
+            chat_mode,
+            allow_analytics,
+            show_deadlines_card,
+            show_notices_card,
+            user_id,
+        ),
+    )
+    db.commit()
+

@@ -1,5 +1,13 @@
 let currentUser = null;
 let authMode = 'login'; // or 'signup'
+let currentSettings = {
+  theme: "dark",
+  preferred_language: "auto",
+  chat_mode: "auto",
+  allow_analytics: true,
+  show_deadlines_card: true,
+  show_notices_card: true,
+};
 
 // -------- TEXT CONSTANTS --------
 const APP_NAME = "MindMate";
@@ -84,11 +92,138 @@ async function handleAuthSubmit() {
     // loadNoticesRightPanel?.(); // if you have a similar function later
 
     switchView('chat', document.querySelector('.nav-item[data-view="chat"]'));
+
+    // Load profile + settings after login
+    await Promise.all([loadUserProfile(), loadUserSettings()]);
+
   } catch (err) {
     console.error(err);
     alert('Network error. Please try again.');
   }
 }
+
+async function loadUserProfile() {
+  try {
+    const res = await fetch("/api/profile");
+    const data = await res.json();
+    if (!res.ok || !data.success) return;
+
+    const p = data.profile;
+    const nameInput = document.getElementById("profile-name");
+    const emailInput = document.getElementById("profile-email");
+    const programInput = document.getElementById("profile-program");
+
+    if (nameInput) nameInput.value = p.name || "";
+    if (emailInput) emailInput.value = p.email || "";
+    if (programInput) {
+      const yearLabel = p.year ? `${p.year} year` : "";
+      programInput.value = `${p.course || ""}${p.course && yearLabel ? ", " : ""}${yearLabel}`;
+    }
+  } catch (e) {
+    console.error("Failed to load profile", e);
+  }
+}
+
+async function saveProfile() {
+  const nameInput = document.getElementById("profile-name");
+  const programInput = document.getElementById("profile-program");
+  const statusEl = document.getElementById("profile-status");
+
+  if (!nameInput || !programInput || !statusEl) return;
+
+  const name = nameInput.value.trim();
+  const program = programInput.value.trim();
+
+  let course = "";
+  let year = null;
+  const parts = program.split(",");
+  if (parts.length >= 1) course = parts[0].trim();
+  if (parts.length >= 2) {
+    const yearMatch = parts[1].match(/(\d+)/);
+    if (yearMatch) year = parseInt(yearMatch[1], 10);
+  }
+
+  statusEl.style.color = "#9ca3af";
+  statusEl.textContent = "Saving...";
+
+  try {
+    const res = await fetch("/api/profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, course, year }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || "Failed");
+    statusEl.style.color = "#22c55e";
+    statusEl.textContent = "Profile saved.";
+  } catch (e) {
+    console.error("Save profile error", e);
+    statusEl.style.color = "#f97316";
+    statusEl.textContent = "Could not save profile.";
+  }
+}
+
+async function loadUserSettings() {
+  try {
+    const res = await fetch("/api/settings");
+    const data = await res.json();
+    if (!res.ok || !data.success) return;
+
+    currentSettings = data.settings;
+
+    const themeSelect = document.getElementById("settings-theme");
+    const langSelect = document.getElementById("settings-language");
+    const analyticsCheckbox = document.getElementById("settings-allow-analytics");
+
+    if (themeSelect) themeSelect.value = currentSettings.theme;
+    if (langSelect) langSelect.value = currentSettings.preferred_language;
+    if (analyticsCheckbox) analyticsCheckbox.checked = currentSettings.allow_analytics;
+
+    // initial chat-mode dropdown
+    const chatModeSelect = document.getElementById("chat-mode");
+    if (chatModeSelect) chatModeSelect.value = currentSettings.chat_mode || "auto";
+  } catch (e) {
+    console.error("Failed to load settings", e);
+  }
+}
+
+async function saveSettings() {
+  const themeSelect = document.getElementById("settings-theme");
+  const langSelect = document.getElementById("settings-language");
+  const analyticsCheckbox = document.getElementById("settings-allow-analytics");
+  const statusEl = document.getElementById("settings-status");
+
+  if (!themeSelect || !langSelect || !analyticsCheckbox || !statusEl) return;
+
+  const payload = {
+    theme: themeSelect.value,
+    preferred_language: langSelect.value,
+    chat_mode: currentSettings.chat_mode || "auto",
+    allow_analytics: analyticsCheckbox.checked,
+    show_deadlines_card: currentSettings.show_deadlines_card,
+    show_notices_card: currentSettings.show_notices_card,
+  };
+
+  statusEl.style.color = "#9ca3af";
+  statusEl.textContent = "Saving...";
+
+  try {
+    const res = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || "Failed");
+    statusEl.style.color = "#22c55e";
+    statusEl.textContent = "Settings saved.";
+  } catch (e) {
+    console.error("Save settings error", e);
+    statusEl.style.color = "#f97316";
+    statusEl.textContent = "Could not save settings.";
+  }
+}
+
 
 async function loadAcademicsView() {
   try {
@@ -399,6 +534,8 @@ function appendMessage(text, sender = "bot") {
 
 async function handleSend() {
   const input = document.getElementById("chat-input");
+  const chatModeSelect = document.getElementById("chat-mode");
+  const mode = chatModeSelect ? chatModeSelect.value : "auto";
   if (!input) return;
 
   const text = input.value.trim();
@@ -414,6 +551,7 @@ async function handleSend() {
       body: JSON.stringify({
         message: text,
         user_id: currentUser ? currentUser.user_id : null,
+        mode: mode,
       }),
     });
 
@@ -439,6 +577,8 @@ async function handleSend() {
 
 async function sendQuick(text) {
   const input = document.getElementById("chat-input");
+  const chatModeSelect = document.getElementById("chat-mode");
+  const mode = chatModeSelect ? chatModeSelect.value : "auto";
   if (input) {
     input.value = "";
   }
@@ -452,6 +592,7 @@ async function sendQuick(text) {
       body: JSON.stringify({
         message: text,
         user_id: currentUser ? currentUser.user_id : null,
+        mode: mode,
       }),
     });
 
@@ -621,4 +762,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   });
+
+  const chatModeSelect = document.getElementById("chat-mode");
+  if (chatModeSelect) {
+    chatModeSelect.addEventListener("change", () => {
+      currentSettings.chat_mode = chatModeSelect.value;
+    });
+  }
 });

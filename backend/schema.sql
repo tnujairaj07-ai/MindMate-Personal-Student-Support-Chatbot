@@ -37,6 +37,24 @@ CREATE TABLE students (
 );
 
 -- =========================
+-- user_settings
+-- =========================
+DROP TABLE IF EXISTS user_settings;
+CREATE TABLE user_settings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL UNIQUE,
+  theme TEXT DEFAULT 'dark',
+  preferred_language TEXT DEFAULT 'auto',   -- auto / en / hi / hinglish
+  chat_mode TEXT DEFAULT 'auto',           -- auto / wellbeing / academics
+  allow_analytics INTEGER DEFAULT 1,       -- 1 = true, 0 = false
+  show_deadlines_card INTEGER DEFAULT 1,
+  show_notices_card INTEGER DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users (id)
+);
+
+-- =========================
 -- NOTICES TABLE (team)
 -- =========================
 DROP TABLE IF EXISTS notices;

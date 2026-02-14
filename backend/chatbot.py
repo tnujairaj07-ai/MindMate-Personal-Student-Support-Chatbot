@@ -162,26 +162,54 @@ def rule_based_academics_reply(user_text: str) -> tuple[str | None, str | None]:
 
     return None, None
 
-def get_llm_response(user_text: str) -> tuple[str, str, str]:
+def get_llm_response(user_text: str, mode: str = "auto") -> tuple[str, str, str]:
     """
     Main entry for the backend.
     Returns (reply_text, intent, mood_tag).
+    mode: "auto", "wellbeing", "academics"
     """
     if not user_text.strip():
         return "Please type something so I can help.", "general", "neutral"
 
-    # Detect intent + mood
+    # Normalize mode
+    mode = (mode or "auto").lower()
+    if mode not in ("auto", "wellbeing", "academics"):
+        mode = "auto"
+
+    # Detect intent + mood (existing helper)
     intent, mood = detect_intent_and_mood(user_text)
 
-    # Try rule-based academic / utility reply first
+    # Adjust intent priority based on mode (simple biasing)
+    if mode == "wellbeing" and intent in ("pyqs", "projects", "syllabus", "notices", "deadlines", "academics"):
+        intent = "wellbeing"
+    elif mode == "academics" and intent not in ("pyqs", "projects", "syllabus", "notices", "deadlines"):
+        intent = "academics"
+
+    # Rule-based academic / utility reply first (reuse your existing logic)
     rb_reply, rb_intent = rule_based_academics_reply(user_text)
     if rb_reply:
         # If rule-based hit, prefer its specific intent, but keep mood.
-        return rb_reply, (rb_intent or intent), mood
+        final_intent = rb_intent or intent
+        # If mode is wellbeing but rule-based says academics, keep academics (since user explicitly asked)
+        return rb_reply, final_intent, mood
 
-    # Otherwise, fall back to LLM
+    # Build system prompt based on mode
+    system_prompt = SYSTEM_PROMPT
+    if mode == "wellbeing":
+        system_prompt += (
+            "\nYou are currently in WELLBEING mode: "
+            "prioritize emotional support, grounding exercises, and coping strategies. "
+            "Keep answers short, empathetic, and student-friendly."
+        )
+    elif mode == "academics":
+        system_prompt += (
+            "\nYou are currently in ACADEMICS mode: "
+            "prioritize syllabus help, PYQs, deadlines, and project guidance. "
+            "Still be kind and supportive, but focus mainly on academic clarity."
+        )
+
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_text},
     ]
 
@@ -192,3 +220,4 @@ def get_llm_response(user_text: str) -> tuple[str, str, str]:
         reply = "Sorry, I had trouble generating a response just now. Please try again in a moment."
 
     return reply, intent, mood
+
