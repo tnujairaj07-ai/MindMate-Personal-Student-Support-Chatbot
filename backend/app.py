@@ -1,10 +1,12 @@
 # backend/app.py
 import os
+import time
+import logging
 from typing import Optional
-
+from collections import defaultdict
 from flask import Flask, render_template, request, jsonify, session, abort
 from werkzeug.security import generate_password_hash, check_password_hash
-from dotenv import load_dotenv
+from backend.config import Config
 
 from backend.db import (
     get_db,
@@ -24,21 +26,40 @@ from backend.db import (
     log_chat_message,
 )
 from backend.chatbot import get_llm_response # now returns (reply, intent, mood)
+LOGIN_WINDOW_SECONDS = 60        # time window
+LOGIN_MAX_ATTEMPTS = 10          # max attempts per IP per window
 
-# Load variables from .env
-load_dotenv()
-DEMO_MODE = os.environ.get("DEMO_MODE", "false").lower() == "true"
+_signup_attempts = defaultdict(list)
+_login_attempts = defaultdict(list)
 
-# ----- PATHS -----
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))   # ...\MindMate\backend
-PROJECT_ROOT = os.path.join(BASE_DIR, "..")             # ...\MindMate
-TEMPLATES_DIR = os.path.join(PROJECT_ROOT, "templates")
-STATIC_DIR = os.path.join(PROJECT_ROOT, "static")
+def _rate_limited(bucket: dict, key: str) -> bool:
+    now = time.time()
+    window_start = now - LOGIN_WINDOW_SECONDS
+    # keep only recent timestamps
+    bucket[key] = [t for t in bucket[key] if t >= window_start]
+    if len(bucket[key]) >= LOGIN_MAX_ATTEMPTS:
+        return True
+    bucket[key].append(now)
+    return False
 
-# IMPORTANT: point Flask to both template AND static folders
-app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
-app.secret_key = os.environ.get("SECRET_KEY", "dev_secret_change_me")
+# Create Flask app using central Config
+app = Flask(
+    __name__,
+    template_folder=Config.TEMPLATES_DIR,
+    static_folder=Config.STATIC_DIR,
+)
+app.config.from_object(Config)
+app.secret_key = Config.SECRET_KEY
 app.teardown_appcontext(close_db)
+
+DEMO_MODE = Config.DEMO_MODE
+
+# basic logging setup
+logging.basicConfig(
+    level=logging.INFO if not Config.DEBUG else logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 # ---------- HELPERS ----------
 def create_user(email: str, name: str, role: str, password: str):
@@ -100,8 +121,29 @@ def require_admin():
         abort(403)
 
 # ---------- AUTH ROUTES ----------
+MIN_PASSWORD_LENGTH = 8
+
+def is_password_strong(password: str) -> bool:
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return False
+    has_digit = any(c.isdigit() for c in password)
+    has_alpha = any(c.isalpha() for c in password)
+    return has_digit and has_alpha
+
 @app.post("/api/signup")
 def api_signup():
+    client_ip = request.remote_addr or "unknown"
+    if _rate_limited(_signup_attempts, client_ip):
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Too many signup attempts. Please wait a minute and try again.",
+                }
+            ),
+            429,
+        )
+    
     data = request.get_json() or {}
     email = (data.get("email") or "").strip()
     name = (data.get("name") or "").strip() or "Student User"
@@ -110,6 +152,20 @@ def api_signup():
 
     if not email or not password:
         return jsonify({"success": False, "error": "Email and password required"}), 400
+
+    if not is_password_strong(password):
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": (
+                        "Password must be at least 8 characters long and include "
+                        "both letters and numbers."
+                    ),
+                }
+            ),
+            400,
+        )
 
     if role not in ("student", "admin"):
         role = "student"
@@ -132,6 +188,18 @@ def api_signup():
 
 @app.post("/api/login")
 def api_login():
+    client_ip = request.remote_addr or "unknown"
+    if _rate_limited(_login_attempts, client_ip):
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Too many login attempts. Please wait a minute and try again.",
+                }
+            ),
+            429,
+        )
+    
     data = request.get_json() or {}
     email = (data.get("email") or "").strip()
     password = (data.get("password") or "").strip()
@@ -160,19 +228,6 @@ def api_login():
 def index():
     return render_template("index.html")
 
-# Simple non-API chat endpoint (kept for demo/testing)
-@app.route("/chat", methods=["POST"])
-def chat():
-    data = request.get_json() or {}
-    user_message = (data.get("message") or "").strip()
-
-    if not user_message:
-        return jsonify({"reply": "Please type a message."})
-
-    # get_llm_response now returns (reply, intent, mood)
-    reply, intent, mood = get_llm_response(user_message)
-    return jsonify({"reply": reply, "intent": intent, "mood": mood})
-
 @app.post("/api/chat")
 def api_chat():
     data = request.get_json() or {}
@@ -198,11 +253,15 @@ def api_chat():
             )
 
     try:
+        # TEMP: force an error here for testing
+        # (uncomment this line when you want to test logging)
+        # raise RuntimeError("Intentional test error in /api/chat")
+
         # Save user message (linked to user)
         if user_id:
             save_message(user_id, message, "user", None)
 
-        # NEW: get reply, intent, mood from chatbot
+        # Get reply, intent, mood from chatbot
         reply, intent, mood = get_llm_response(message)
 
         # Save bot reply with intent
@@ -222,8 +281,8 @@ def api_chat():
             mood=mood,
         )
 
-    except Exception as e:
-        print("Error in /api/chat:", e)
+    except Exception:
+        logger.exception("Error in /api/chat")
         return (
             jsonify(
                 success=False,
@@ -285,8 +344,8 @@ def api_create_deadline():
     try:
         add_deadline(label, due_date, course, subject, type_, visible_to)
         return jsonify(success=True)
-    except Exception as e:
-        print("Error adding deadline:", e)
+    except Exception:
+        logger.exeception("Error adding deadline:")
         return jsonify(success=False, error="Failed to add deadline"), 500
 
 # ---------- ACADEMIC DATA APIs (team DB integrated) ----------
@@ -296,8 +355,8 @@ def api_academic_notices():
         rows = get_notices()
         items = [{"title": r["title"], "description": r["description"]} for r in rows]
         return jsonify({"items": items})
-    except Exception as e:
-        print("Error in /api/academic/notices:", e)
+    except Exception:
+        logger.exeception("Error in /api/academic/notices:")
         return jsonify({"items": []}), 500
 
 @app.get("/api/academic/syllabus")
@@ -309,8 +368,8 @@ def api_academic_syllabus():
         rows = get_syllabus(subject)
         items = [{"unit": r["unit"], "topics": r["topics"]} for r in rows]
         return jsonify({"items": items})
-    except Exception as e:
-        print("Error in /api/academic/syllabus:", e)
+    except Exception:
+        logger.exeception("Error in /api/academic/syllabus:")
         return jsonify({"items": []}), 500
 
 @app.get("/api/academic/pyqs")
@@ -322,8 +381,8 @@ def api_academic_pyqs():
         rows = get_pyqs(subject)
         items = [{"year": r["year"], "question": r["question"]} for r in rows]
         return jsonify({"items": items})
-    except Exception as e:
-        print("Error in /api/academic/pyqs:", e)
+    except Exception:
+        logger.exeception("Error in /api/academic/pyqs:")
         return jsonify({"items": []}), 500
 
 @app.get("/api/academic/projects")
@@ -340,8 +399,8 @@ def api_academic_projects():
             for r in rows
         ]
         return jsonify({"items": items})
-    except Exception as e:
-        print("Error in /api/academic/projects:", e)
+    except Exception:
+        logger.exeception("Error in /api/academic/projects:")
         return jsonify({"items": []}), 500
 
 @app.get("/api/academic/helplines")
@@ -359,8 +418,8 @@ def api_academic_helplines():
             for r in rows
         ]
         return jsonify({"items": items})
-    except Exception as e:
-        print("Error in /api/academic/helplines:", e)
+    except Exception:
+        logger.exeception("Error in /api/academic/helplines:")
         return jsonify({"items": []}), 500
 
 # ---------- ADMIN: COMPLAINTS & SUMMARY ----------
@@ -371,8 +430,8 @@ def api_admin_complaints():
         rows = get_complaints()
         items = [dict(r) for r in rows] if rows and not isinstance(rows[0], dict) else rows
         return jsonify({"items": items})
-    except Exception as e:
-        print("Error in /api/admin/complaints:", e)
+    except Exception:
+        logger.exception("Error in /api/admin/complaints:")
         return jsonify({"items": []}), 500
 
 @app.get("/api/admin/complaints/summary")
@@ -382,8 +441,8 @@ def api_admin_complaints_summary():
         rows = get_complaints_summary()
         items = [dict(r) for r in rows] if rows and not isinstance(rows[0], dict) else rows
         return jsonify({"items": items})
-    except Exception as e:
-        print("Error in /api/admin/complaints/summary:", e)
+    except Exception:
+        logger.exception("Error in /api/admin/complaints/summary:")
         return jsonify({"items": []}), 500
     
 @app.post("/api/complaints")
@@ -400,8 +459,8 @@ def api_submit_complaint():
     try:
         add_complaint(studentname or "Anonymous", rollno or "", department or "", complainttext)
         return jsonify(success=True)
-    except Exception as e:
-        print("Error saving complaint:", e)
+    except Exception:
+        logger.exception("Error saving complaint:")
         return jsonify(success=False, error="Failed to save complaint"), 500
     
 # ---------- INSIGHTS ----------

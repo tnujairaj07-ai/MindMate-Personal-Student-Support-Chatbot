@@ -1,8 +1,9 @@
 # backend/chatbot.py
+import logging
 
 from backend.llm_ollama import chat_with_ollama
 from backend.db import get_notices_dict, get_syllabus, get_pyqs, get_projects, get_helplines
-
+logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """
 You are MindMate, a friendly and empathetic campus companion for college students.
 Your goals:
@@ -186,8 +187,8 @@ def get_llm_response(user_text: str) -> tuple[str, str, str]:
 
     try:
         reply = chat_with_ollama(messages).strip()
-    except Exception as e:
-        print("LLM error:", e)
+    except Exception:
+        logger.exception("LLM error:")
         reply = "Sorry, I had trouble generating a response just now. Please try again in a moment."
 
     return reply, intent, mood
