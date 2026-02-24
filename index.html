@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Academic Planning Assistant - Login</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=DM+Sans:wght@400;500;700&display=swap"
+        rel="stylesheet">
+
+</head>
+
+<body>
+    <!-- Authentication Container -->
+    <div class="auth-container" id="authContainer">
+        <!-- Login Form -->
+        <div class="auth-card" id="loginCard">
+            <div class="auth-header">
+                <div class="logo-large">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <path d="M24 6L6 15L24 24L42 15L24 6Z" fill="currentColor" opacity="0.8" />
+                        <path d="M6 24L24 33L42 24" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+                        <path d="M6 33L24 42L42 33" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+                    </svg>
+                </div>
+                <h1>MINDMATE</h1>
+                <p>Your Personal Learning Assistant</p>
+            </div>
+
+            <div class="form-group">
+                <label>Login As</label>
+                <div class="role-selector">
+                    <label class="role-option">
+                        <input type="radio" name="role" value="student" checked />
+                        <span>🎓 Student</span>
+                    </label>
+
+                    <label class="role-option">
+                        <input type="radio" name="role" value="admin" />
+                        <span>🧑‍🏫 Admin / Faculty</span>
+                    </label>
+                </div>
+            </div>
+
+
+            <form class="auth-form" id="loginForm">
+                <h2>Welcome Back!</h2>
+                <p class="form-subtitle">Sign in to continue your academic journey</p>
+
+                <div class="form-group">
+                    <label for="loginEmail">Email Address</label>
+                    <input type="email" id="loginEmail" name="email" placeholder="student@university.edu" required />
+                </div>
+
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" name="password" placeholder="Enter your password"
+                        required />
+                </div>
+
+                <div class="error-message" id="loginError"></div>
+
+                <button type="submit" class="btn-primary">
+                    <span>Sign In</span>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M4 10H16M16 10L12 6M16 10L12 14" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" />
+                    </svg>
+                </button>
+
+                <div class="form-footer">
+                    <p>Don't have an account? <a href="#" id="showRegister">Create Account</a></p>
+                </div>
+            </form>
+        </div>
+
+        <!-- Registration Form -->
+        <div class="auth-card" id="registerCard" style="display: none;">
+            <div class="auth-header">
+                <div class="logo-large">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <path d="M24 6L6 15L24 24L42 15L24 6Z" fill="currentColor" opacity="0.8" />
+                        <path d="M6 24L24 33L42 24" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+                        <path d="M6 33L24 42L42 33" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+                    </svg>
+                </div>
+                <h1>MINDMATE</h1>
+                <p>Join thousands of successful students</p>
+            </div>
+
+            <form class="auth-form" id="registerForm">
+                <h2>Create Account</h2>
+                <p class="form-subtitle">Fill in your details to get started</p>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="registerName">Full Name</label>
+                        <input type="text" id="registerName" name="name" placeholder="John Doe" required />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="registerEmail">Email Address</label>
+                        <input type="email" id="registerEmail" name="email" placeholder="student@university.edu"
+                            required />
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="registerEnrollment">Enrollment Number</label>
+                        <input type="text" id="registerEnrollment" name="enrollment_number" placeholder="ENR2024001"
+                            required />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="registerPhone">Phone Number</label>
+                        <input type="tel" id="registerPhone" name="phone" placeholder="+91 9876543210" />
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="registerDepartment">Department</label>
+                        <select id="registerDepartment" name="department" required>
+                            <option value="">Select Department</option>
+                            <option value="Computer Science">Computer Science</option>
+                            <option value="Information Technology">Information Technology</option>
+                            <option value="Electronics & Communication">Electronics & Communication</option>
+                            <option value="Electrical Engineering">Electrical Engineering</option>
+                            <option value="Mechanical Engineering">Mechanical Engineering</option>
+                            <option value="Civil Engineering">Civil Engineering</option>
+                            <option value="Chemical Engineering">Chemical Engineering</option>
+                            <option value="Biotechnology">Biotechnology</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="registerSemester">Current Semester</label>
+                        <select id="registerSemester" name="semester" required>
+                            <option value="">Select Semester</option>
+                            <option value="1">1st Semester</option>
+                            <option value="2">2nd Semester</option>
+                            <option value="3">3rd Semester</option>
+                            <option value="4">4th Semester</option>
+                            <option value="5">5th Semester</option>
+                            <option value="6">6th Semester</option>
+                            <option value="7">7th Semester</option>
+                            <option value="8">8th Semester</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="registerPassword">Password</label>
+                    <input type="password" id="registerPassword" name="password" placeholder="At least 6 characters"
+                        required minlength="6" />
+                </div>
+
+                <div class="error-message" id="registerError"></div>
+
+                <button type="submit" class="btn-primary">
+                    <span>Create Account</span>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M4 10H16M16 10L12 6M16 10L12 14" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" />
+                    </svg>
+                </button>
+
+                <div class="form-footer">
+                    <p>Already have an account? <a href="#" id="showLogin">Sign In</a></p>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================= MAIN APP CONTAINER ================= -->
+    <div class="app-container" id="appContainer" style="display:none;">
+
+        <!-- ========== LEFT SIDEBAR ========== -->
+        <aside class="sidebar" id="leftPanel">
+            <div class="sidebar-header">
+                <h2 class="app-name">MindMate</h2>
+                <p class="tagline">Your private campus companion</p>
+            </div>
+
+            <div class="user-profile">
+                <div class="avatar" id="student-initials">DU</div>
+                <div class="user-info">
+                    <h4 id="userName">Demo User</h4>
+                    <span id="userRole">Student</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-view="chat">💬 Assistant</button>
+                <button class="nav-item" data-view="academics">📚 Academics</button>
+
+                <!-- Admin-only -->
+                <button class="nav-item admin-only" data-view="insights">📊 Insights</button>
+
+                <button class="nav-item" data-view="account">👤 Profile</button>
+                <button class="nav-item" data-view="settings">⚙ Settings</button>
+                <button class="nav-item" data-view="help">🛟 Help & Safety</button>
+            </nav>
+
+            <button class="logout-btn" id="logoutBtn">Logout</button>
+        </aside>
+        <button class="toggle-btn left-toggle" onclick="toggleLeft()">☰</button>
+
+        <!-- ========== MAIN CONTENT AREA ========== -->
+        <main class="main-area">
+
+            <!-- ================= CHAT ================= -->
+            <section class="view active" id="view-chat">
+                <header class="section-header">
+                    <h3>MindMate Assistant</h3>
+                    <span class="status-indicator">🟢 Online</span>
+                </header>
+
+                <div class="chat-messages" id="chatMessages">
+                    <div class="bot-msg">
+                        Hi 👋 I’m MindMate.
+                        You can talk to me about academics, stress, planning, or anything campus-related.
+                    </div>
+                </div>
+
+                <form class="chat-input" id="chatForm">
+                    <input id="userInput" type="text" placeholder="Type your message…" />
+                    <button type="submit" id="sendBtn">➤</button>
+                </form>
+            </section>
+
+            <!-- ================= STUDENT ACADEMICS ================= -->
+            <section class="view" id="view-academics">
+                <header class="section-header">
+                    <h3>Academics Overview</h3>
+                </header>
+
+                <div class="card-grid">
+                    <div class="card">📢 Notices</div>
+                    <div class="card">📅 Deadlines</div>
+                    <div class="card">📘 Syllabus</div>
+                    <div class="card">📄 PYQs</div>
+                    <div class="card">💡 Past Projects</div>
+                </div>
+            </section>
+
+            <!-- ================= ADMIN INSIGHTS ================= -->
+            <section class="view" id="view-insights">
+                <header class="section-header">
+                    <h3>Anonymous Student Insights</h3>
+                    <p class="subtext">No personal data. Trends only.</p>
+                </header>
+
+                <div class="card-grid">
+                    <div class="card">🔥 Top Stress Topics</div>
+                    <div class="card">📈 Weekly Trends</div>
+                    <div class="card">🧠 Resource Usage</div>
+                    <div class="card">⏰ Peak Usage Hours</div>
+                    <div class="card">📚 Academic Pressure Areas</div>
+                </div>
+            </section>
+
+            <!-- ================= ACCOUNT ================= -->
+            <section class="view" id="view-account">
+                <header class="section-header">
+                    <div class="card">
+                        <h3>My Profile</h3>
+                    </div>
+                </header>
+
+                <div class="profile-card">
+                    <p><strong>Name:</strong> <span id="student-name">Demo User</span></p>
+                    <p><strong>Department:</strong> <span id="student-dept">CSE</span></p>
+                    <p><strong>Semester:</strong> <span id="student-semester">5</span></p>
+                    <p><strong>Usage:</strong> Chat history & activity overview</p>
+                </div>
+            </section>
+
+            <!-- ================= SETTINGS ================= -->
+            <section class="view" id="view-settings">
+                <header class="section-header">
+                    <h3>Settings</h3>
+                </header>
+
+                <ul class="settings-list">
+                    <li>🌗 Dark / Light Mode</li>
+                    <li>🌍 Language Preference</li>
+                    <li>🔔 Notification Controls</li>
+                    <li>🔐 Privacy & Data</li>
+                </ul>
+            </section>
+
+            <!-- ================= HELP ================= -->
+            <section class="view" id="view-help">
+                <header class="section-header">
+                    <h3>Help & Safety</h3>
+                </header>
+
+                <div class="help-card">
+                    <p>MindMate is an academic support assistant, not a therapist.</p>
+                    <p><strong>Emergency Helpline:</strong> 112</p>
+                    <p>Your chats are private and anonymous.</p>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- ========== RIGHT CONTEXT PANEL ========== -->
+        <aside class="right-panel" id="rightPanel">
+            <div class="context-card">
+                <h4>Today’s Mood</h4>
+                <p>🙂 Calm</p>
+            </div>
+
+            <div class="context-card">
+                <h4>Quick Actions</h4>
+                <ul>
+                    <li onclick="switchView('academics')">Open Academics</li>
+                    <li onclick="switchView('chat')">Chat Assistant</li>
+                    <li class="admin-only" onclick="switchView('insights')">View Insights</li>
+                </ul>
+            </div>
+
+            <div class="context-card safety">
+                <h4>Safety</h4>
+                <p>Your conversations are encrypted and anonymous.</p>
+            </div>
+        </aside>
+        <button class="toggle-btn right-toggle" onclick="toggleRight()">☰</button>
+
+    </div>
+
+
+
+
+    <script src="script.js"></script>
+</body>
+
+</html>
