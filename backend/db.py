@@ -55,6 +55,27 @@ def get_deadlines(limit: int = 5):
     ).fetchall()
     return rows
 
+def get_deadlines_for_student(course: str | None, limit: int | None = None):
+    db = get_db()
+    sql = """
+        SELECT id, label, due_date, course, subject, type, visible_to
+        FROM deadlines
+        WHERE date(due_date) >= date('now')
+          AND (visible_to IS NULL OR visible_to IN ('student', 'both'))
+    """
+    params = []
+
+    if course:
+        sql += " AND (course IS NULL OR course = '' OR course = ?)"
+        params.append(course)
+
+    sql += " ORDER BY due_date ASC"
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(limit)
+
+    return db.execute(sql, tuple(params)).fetchall()
+
 def add_deadline(label, due_date, course, subject, type_, visible_to="student"):
     db = get_db()
     db.execute(
@@ -177,8 +198,6 @@ def log_chat_message(session_id: str, sender: str, message_text: str, intent_det
     )
     db.commit()
 
-# backend/db.py
-
 def get_user_by_id(user_id: int):
     db = get_db()
     cur = db.execute(
@@ -194,6 +213,45 @@ def get_student_by_email(email: str):
         (email,),
     )
     return cur.fetchone()
+
+def get_student_by_user_id(user_id: int):
+    db = get_db()
+    row = db.execute(
+        """
+        SELECT student_id, user_id, name, email, roll_no, course, year, semester
+        FROM students
+        WHERE user_id = ?
+        """,
+        (user_id,),
+    ).fetchone()
+    return row
+
+def upsert_student_for_user(user_id: int, name: str, email: str | None,
+                            roll_no: str | None, course: str | None,
+                            year: int | None, semester: int | None):
+    db = get_db()
+    existing = db.execute(
+        "SELECT student_id FROM students WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+    if existing:
+        db.execute(
+            """
+            UPDATE students
+            SET name = ?, email = ?, roll_no = ?, course = ?, year = ?, semester = ?
+            WHERE user_id = ?
+            """,
+            (name, email, roll_no, course, year, semester, user_id),
+        )
+    else:
+        db.execute(
+            """
+            INSERT INTO students (user_id, name, email, roll_no, course, year, semester)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, name, email, roll_no, course, year, semester),
+        )
+    db.commit()
 
 def get_or_create_user_settings(user_id: int):
     db = get_db()
@@ -243,3 +301,10 @@ def update_user_settings(
     )
     db.commit()
 
+def get_syllabus_for_course_subject(course: str, subject: str):
+    db = get_db()
+    rows = db.execute(
+        "SELECT unit, topics FROM syllabus WHERE subject = ? AND (course = ? OR course IS NULL)",
+        (subject, course),
+    ).fetchall()
+    return rows

@@ -26,8 +26,11 @@ from backend.db import (
     log_chat_message,
     get_user_by_id,
     get_student_by_email,
+    get_student_by_user_id,      
+    upsert_student_for_user,    
     get_or_create_user_settings,
     update_user_settings,
+    get_deadlines_for_student, 
 )
 from backend.chatbot import get_llm_response # now returns (reply, intent, mood)
 LOGIN_WINDOW_SECONDS = 60        # time window
@@ -123,6 +126,12 @@ def require_admin():
     row = cur.fetchone()
     if not row or row["role"] != "admin":
         abort(403)
+
+def require_login():
+    user_id = session.get("user_id")
+    if not user_id:
+        abort(401)
+    return user_id
 
 # ---------- AUTH ROUTES ----------
 MIN_PASSWORD_LENGTH = 8
@@ -239,8 +248,8 @@ def api_get_profile():
         return jsonify(success=False, error="User not found"), 404
 
     # try to match with students table by email
-    student = get_student_by_email(user["email"]) if user["email"] else None
-
+    student = get_student_by_user_id(user_id)
+    
     profile = {
         "name": user["name"],
         "email": user["email"],
@@ -248,6 +257,7 @@ def api_get_profile():
         "roll_no": student["roll_no"] if student else "",
         "course": student["course"] if student else "",
         "year": student["year"] if student else None,
+        "semester": student["semester"] if student and "semester" in student.keys() else None,
     }
     return jsonify(success=True, profile=profile)
 
@@ -262,34 +272,43 @@ def api_update_profile():
     roll_no = (data.get("roll_no") or "").strip()
     course = (data.get("course") or "").strip()
     year = data.get("year")
+    semester = data.get("semester")
+
+    # parse ints safely
+    try:
+        year = int(year) if year not in (None, "") else None
+    except ValueError:
+        year = None
+    try:
+        semester = int(semester) if semester not in (None, "") else None
+    except ValueError:
+        semester = None
 
     db = get_db()
+
+    # update users.name if provided
     if name:
         db.execute("UPDATE users SET name = ? WHERE id = ?", (name, user_id))
+        db.commit()
 
-    # upsert into students table using email
+    # fetch updated user to get email + final name
     user = get_user_by_id(user_id)
-    if user and user["email"]:
-        existing = get_student_by_email(user["email"])
-        if existing:
-            db.execute(
-                """
-                UPDATE students
-                SET name = ?, roll_no = ?, course = ?, year = ?
-                WHERE email = ?
-                """,
-                (name or existing["name"], roll_no or existing["roll_no"],
-                 course or existing["course"], year or existing["year"], user["email"]),
-            )
-        else:
-            db.execute(
-                """
-                INSERT INTO students (name, email, roll_no, course, year)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (name or user["name"], user["email"], roll_no, course, year),
-            )
-    db.commit()
+    if not user:
+        return jsonify(success=False, error="User not found"), 404
+
+    final_name = name or user["name"]
+    email = user["email"]
+
+    # Use helper to upsert into students table (Phase 3)
+    upsert_student_for_user(
+        user_id=user_id,
+        name=final_name,
+        email=email,
+        roll_no=roll_no or None,
+        course=course or None,
+        year=year,
+        semester=semester,
+    )
 
     return jsonify(success=True)
 
@@ -409,6 +428,74 @@ def api_chat():
             500,
         )
 
+@app.post("/api/studyplan")
+def api_studyplan():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify(success=False, error="Not logged in"), 401
+
+    data = request.get_json() or {}
+    subject = (data.get("subject") or "").strip()
+    hours_per_day = data.get("hours_per_day") or 2
+
+     # Get student info
+    student = get_student_by_user_id(user_id)
+    course = student["course"] if student else None
+    year = student["year"] if student else None
+
+    # reuse deadlines helper
+    try:
+        if course:
+            dl_rows = get_deadlines_for_student(course, limit=None)
+        else:
+            dl_rows = get_deadlines()
+    except Exception:
+        dl_rows = []
+
+    subject_deadlines = [
+        dict(r)
+        for r in dl_rows
+        if subject and r["subject"] and r["subject"].lower() == subject.lower()
+    ]
+
+    context_lines = []
+    if student:
+        context_lines.append(
+            f"Student course: {course or 'Unknown'}, year: {year or 'Unknown'}."
+        )
+    if subject:
+        context_lines.append(f"Subject: {subject}.")
+    if subject_deadlines:
+        dl_str = "; ".join(
+            f"{d['label']} on {d['due_date']}" for d in subject_deadlines
+        )
+        context_lines.append(f"Upcoming deadlines: {dl_str}.")
+    else:
+        context_lines.append("No specific deadlines found for this subject.")
+
+    system_msg = (
+        "You are a helpful academic coach. "
+        "Create a realistic 5–7 bullet study plan tailored to the student's context. "
+        "Keep each bullet short and actionable."
+        "Emphasize balance and stress management."
+    )
+    user_msg = (
+        "\n".join(context_lines)
+        + f"\nThe student can study about {hours_per_day} hours per day."
+    )
+
+    # use your existing chatbot backend; here we reuse get_llm_response
+    try:
+        # We give combined prompt to get_llm_response; you can extend its signature if needed
+        reply, intent, mood = get_llm_response(
+            f"STUDY_PLAN_REQUEST:\n{user_msg}",
+            mode="academics",
+        )
+        return jsonify(success=True, plan=reply, intent=intent, mood=mood)
+    except Exception:
+        logger.exception("Error in /api/studyplan:")
+        return jsonify(success=False, error="Failed to generate study plan"), 500
+
 # ---------- SIMPLE NOTICES (right panel) ----------
 @app.get("/api/notices")
 def api_notices():
@@ -424,7 +511,19 @@ def api_notices():
 
 @app.get("/api/deadlines")
 def api_deadlines():
-    rows = get_deadlines()
+    user_id = session.get("user_id")
+    course = None
+
+    if user_id:
+        student = get_student_by_user_id(user_id)
+        if student:
+            course = student["course"]
+
+    if course:
+        rows = get_deadlines_for_student(course, limit=None)
+    else:
+        rows = get_deadlines()
+
     items = [
         {
             "id": r["id"],
@@ -460,7 +559,7 @@ def api_create_deadline():
         add_deadline(label, due_date, course, subject, type_, visible_to)
         return jsonify(success=True)
     except Exception:
-        logger.exeception("Error adding deadline:")
+        logger.exception("Error adding deadline:")
         return jsonify(success=False, error="Failed to add deadline"), 500
 
 # ---------- ACADEMIC DATA APIs (team DB integrated) ----------
@@ -471,33 +570,55 @@ def api_academic_notices():
         items = [{"title": r["title"], "description": r["description"]} for r in rows]
         return jsonify({"items": items})
     except Exception:
-        logger.exeception("Error in /api/academic/notices:")
+        logger.exception("Error in /api/academic/notices:")
         return jsonify({"items": []}), 500
 
 @app.get("/api/academic/syllabus")
 def api_academic_syllabus():
     subject = (request.args.get("subject") or "").strip()
+    course = (request.args.get("course") or "").strip()
+
     if not subject:
         return jsonify({"items": []})
+
+    # infer course from logged‑in student if not provided
+    if not course:
+        user_id = session.get("user_id")
+        if user_id:
+            student = get_student_by_user_id(user_id)
+            if student and student["course"]:
+                course = student["course"]
+
     try:
+       # For now, get_syllabus ignores course; later you can create get_syllabus_for_course()
         rows = get_syllabus(subject)
         items = [{"unit": r["unit"], "topics": r["topics"]} for r in rows]
         return jsonify({"items": items})
     except Exception:
-        logger.exeception("Error in /api/academic/syllabus:")
+        logger.exception("Error in /api/academic/syllabus:")
         return jsonify({"items": []}), 500
 
 @app.get("/api/academic/pyqs")
 def api_academic_pyqs():
     subject = (request.args.get("subject") or "").strip()
+    course = (request.args.get("course") or "").strip()
+
     if not subject:
         return jsonify({"items": []})
+
+    if not course:
+        user_id = session.get("user_id")
+        if user_id:
+            student = get_student_by_user_id(user_id)
+            if student and student["course"]:
+                course = student["course"]
+
     try:
         rows = get_pyqs(subject)
         items = [{"year": r["year"], "question": r["question"]} for r in rows]
         return jsonify({"items": items})
     except Exception:
-        logger.exeception("Error in /api/academic/pyqs:")
+        logger.exception("Error in /api/academic/pyqs:")
         return jsonify({"items": []}), 500
 
 @app.get("/api/academic/projects")
@@ -515,7 +636,7 @@ def api_academic_projects():
         ]
         return jsonify({"items": items})
     except Exception:
-        logger.exeception("Error in /api/academic/projects:")
+        logger.exception("Error in /api/academic/projects:")
         return jsonify({"items": []}), 500
 
 @app.get("/api/academic/helplines")
@@ -534,7 +655,7 @@ def api_academic_helplines():
         ]
         return jsonify({"items": items})
     except Exception:
-        logger.exeception("Error in /api/academic/helplines:")
+        logger.exception("Error in /api/academic/helplines:")
         return jsonify({"items": []}), 500
 
 # ---------- ADMIN: COMPLAINTS & SUMMARY ----------

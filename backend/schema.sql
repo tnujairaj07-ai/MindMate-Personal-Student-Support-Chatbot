@@ -28,12 +28,15 @@ CREATE TABLE messages (
 DROP TABLE IF EXISTS students;
 CREATE TABLE students (
     student_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER UNIQUE,  
     name TEXT NOT NULL,
     email TEXT UNIQUE,
     roll_no TEXT UNIQUE,
     course TEXT,
     year INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    semester INTEGER, 
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id)
 );
 
 -- =========================
@@ -87,12 +90,22 @@ CREATE TABLE deadlines (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Sample data
+--Sample data
+--INSERT INTO deadlines (label, due_date, course, subject, type, visible_to)
+--VALUES
+  --('DBMS Assignment 1', '2026-03-05', 'B.Tech CSE', 'DBMS', 'assignment', 'student'),
+  --('OS Midsem Exam',    '2026-03-12', 'B.Tech CSE', 'OS',   'exam',       'student'),
+  --('Mini Project Demo', '2026-04-01', 'B.Tech CSE', 'AI',   'project',    'student');
+
 INSERT INTO deadlines (label, due_date, course, subject, type, visible_to)
-VALUES
-  ('DBMS Assignment 1', '2026-03-05', 'B.Tech CSE', 'DBMS', 'assignment', 'student'),
-  ('OS Midsem Exam',    '2026-03-12', 'B.Tech CSE', 'OS',   'exam',       'student'),
-  ('Mini Project Demo', '2026-04-01', 'B.Tech CSE', 'AI',   'project',    'student');
+VALUES ('DBMS Assignment 1', '2026-03-10', 'B.Tech CSE', 'DBMS', 'assignment', 'student');
+
+INSERT INTO deadlines (label, due_date, course, subject, type, visible_to)
+VALUES ('Campus Orientation', '2026-03-05', NULL, NULL, 'other', 'student');
+
+INSERT INTO deadlines (label, due_date, course, subject, type, visible_to)
+VALUES ('MBA Presentation', '2026-03-15', 'MBA', 'Marketing', 'project', 'student');
+
 
 -- =========================
 -- SYLLABUS TABLE (team)
