@@ -375,11 +375,20 @@ def get_saved_resources_for_user(user_id: int):
     db = get_db()
     rows = db.execute(
         """
-        SELECT sr.id as saved_id, r.*
-        FROM saved_resources sr
-        JOIN resources r ON sr.resource_id = r.id
-        WHERE sr.user_id = ?
-        ORDER BY sr.created_at DESC
+        SELECT
+            id,            -- this is saved_resource id
+            resource_id,   -- original resource id (may be NULL later)
+            title,
+            type,
+            subject,
+            semester,
+            program,
+            url,
+            description,
+            saved_at
+        FROM saved_resources
+        WHERE user_id = ?
+        ORDER BY saved_at DESC
         """,
         (user_id,),
     ).fetchall()
@@ -387,19 +396,40 @@ def get_saved_resources_for_user(user_id: int):
 
 def save_resource_for_user(user_id: int, resource_id: int):
     db = get_db()
+    # Fetch the resource to snapshot
+    res = db.execute(
+        "SELECT * FROM resources WHERE id = ?",
+        (resource_id,),
+    ).fetchone()
+    if not res:
+        return
+
     db.execute(
         """
-        INSERT OR IGNORE INTO saved_resources (user_id, resource_id)
-        VALUES (?, ?)
+        INSERT INTO saved_resources (
+            user_id, resource_id, title, type, subject,
+            semester, program, url, description
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (user_id, resource_id),
+        (
+            user_id,
+            resource_id,
+            res["title"],
+            res["type"],
+            res["subject"],
+            res["semester"],
+            res["program"],
+            res["url"],
+            res["description"],
+        ),
     )
     db.commit()
 
-def remove_saved_resource(user_id: int, resource_id: int):
+def remove_saved_resource(saved_id: int, user_id: int):
     db = get_db()
     db.execute(
-        "DELETE FROM saved_resources WHERE user_id = ? AND resource_id = ?",
-        (user_id, resource_id),
-    )
+        "DELETE FROM saved_resources WHERE id = ? AND user_id = ?",
+        (saved_id, user_id),
+        )
     db.commit()

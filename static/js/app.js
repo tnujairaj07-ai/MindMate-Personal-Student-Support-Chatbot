@@ -430,13 +430,20 @@ async function loadAcademicsView() {
             li.appendChild(link);
           }
           
+          const meta = document.createElement('span');
+          meta.style.marginLeft = '4px';
+          meta.style.fontSize = '10px';
+          meta.style.color = '#9ca3af';
+          meta.textContent = r.saved_at ? `(saved on ${r.saved_at.split(' ')[0]})` : '';
+          li.appendChild(meta);
+
           const btn = document.createElement('button');
           btn.textContent = 'Remove';
           btn.style.marginLeft = '6px';
           btn.style.fontSize = '11px';
-          btn.onclick = () => unsaveResource(r.id);   // <-- id (resource), not saved_id
+          btn.onclick = () => unsaveResource(r.id);  // r.id is saved resource id now
           li.appendChild(btn);
-          
+
           savedUl.appendChild(li);
         });
       }
@@ -467,16 +474,15 @@ async function toggleSaveResource(resourceId) {
   }
 }
 
-async function unsaveResource(resourceId) {
+async function unsaveResource(savedId) {
   if (!window.confirm("Remove this resource from your saved list?")) return;
   try {
-    const res = await fetch(`/api/resources/saved/${resourceId}`, { method: "DELETE" });
+    const res = await fetch(`/api/resources/saved/${savedId}`, { method: "DELETE" });
     const data = await res.json();
     if (!res.ok || !data.success) {
       alert(data.error || "Could not remove resource");
       return;
     }
-    // Reload academics view to refresh both lists
     loadAcademicsView();
   } catch (e) {
     console.error("unsaveResource error", e);

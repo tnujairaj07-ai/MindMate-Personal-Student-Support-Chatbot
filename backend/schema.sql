@@ -214,13 +214,21 @@ CREATE TABLE IF NOT EXISTS resources (
     visible_to TEXT DEFAULT 'student'  -- 'student', 'admin', 'all'
 );
 
--- Saved / bookmarked resources per user
-CREATE TABLE IF NOT EXISTS saved_resources (
+--============================
+-- Saved resources per user
+--============================
+DROP TABLE IF EXISTS saved_resources;
+CREATE TABLE saved_resources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
-    resource_id INTEGER NOT NULL,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (user_id, resource_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE CASCADE
+    resource_id INTEGER,           -- optional pointer to original (for info only)
+    title TEXT NOT NULL,
+    type TEXT,
+    subject TEXT,
+    semester INTEGER,
+    program TEXT,
+    url TEXT,
+    description TEXT,
+    saved_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

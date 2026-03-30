@@ -808,14 +808,13 @@ def add_saved_resource():
     save_resource_for_user(user_id, resource_id)
     return jsonify({"success": True})
 
-@app.route("/api/resources/saved/<int:resource_id>", methods=["DELETE"])
-def delete_saved_resource(resource_id):
+@app.route("/api/resources/saved/<int:saved_id>", methods=["DELETE"])
+def delete_saved_resource(saved_id):
     user_id = session.get("user_id")
     if not user_id:
         return jsonify({"success": False, "error": "Not logged in"}), 401
-    remove_saved_resource(user_id, resource_id)
+    remove_saved_resource(saved_id, user_id)
     return jsonify({"success": True})
-
 
 # ---------- ADMIN: COMPLAINTS & SUMMARY ----------
 @app.get("/api/admin/complaints")
