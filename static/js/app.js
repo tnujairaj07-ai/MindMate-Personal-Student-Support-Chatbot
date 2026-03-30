@@ -89,7 +89,7 @@ async function handleAuthSubmit() {
  
     // Load right-panel data 
     loadDeadlinesRightPanel(); 
-    // loadNoticesRightPanel?.(); // if you have a similar function later 
+    loadNoticesRightPanel();
  
     switchView('chat', document.querySelector('.nav-item[data-view="chat"]')); 
  
@@ -214,6 +214,21 @@ async function loadAcademicsView() {
     // Helplines 
     const helplinesRes = await fetch('/api/academic/helplines'); 
     const helplinesData = await helplinesRes.json(); 
+
+    // Resources
+    const resourcesRes = await fetch('/api/resources');
+    const resourcesData = await resourcesRes.json();
+
+    // Saved resources
+    let savedData = { items: [] };
+    try {
+      const savedRes = await fetch('/api/resources/saved');
+      if (savedRes.ok) {
+        savedData = await savedRes.json();
+      }
+    } catch (e) {
+      console.error("Failed to load saved resources", e);
+    }
  
     const view = document.getElementById('view-academics'); 
     if (!view) return; 
@@ -225,7 +240,7 @@ async function loadAcademicsView() {
           <div class="card-header-main">Notices & announcements</div> 
           <div class="card-desc">Latest updates from your university.</div> 
           <ul id="academics-notices-list" style="font-size:12px; color:#e5e7eb; list
-style:none; margin-top:4px;"></ul> 
+          style:none; margin-top:4px;"></ul> 
           <div class="link" onclick="sendQuick('Show me notices')">Ask in chat →</div> 
         </div> 
  
@@ -233,36 +248,48 @@ style:none; margin-top:4px;"></ul>
           <div class="card-header-main">Deadlines</div> 
           <div class="card-desc">Keep track of assignments and exams.</div> 
           <div style="font-size:12px; color:#9ca3af;">Deadlines integration is pending. You 
-can still ask in chat: "Show my deadlines".</div> 
+          can still ask in chat: "Show my deadlines".</div> 
         </div> 
  
         <div class="card" id="card-syllabus"> 
           <div class="card-header-main">DBMS Syllabus</div> 
           <div class="card-desc">Units and topics for DBMS.</div> 
           <ul id="academics-syllabus-list" style="font-size:12px; color:#e5e7eb; list
-style:none; margin-top:4px;"></ul> 
+          style:none; margin-top:4px;"></ul> 
         </div> 
  
         <div class="card" id="card-pyqs"> 
           <div class="card-header-main">DBMS Previous Year Papers</div> 
           <div class="card-desc">Practice from real question papers.</div> 
           <ul id="academics-pyqs-list" style="font-size:12px; color:#e5e7eb; list-style:none; 
-margin-top:4px;"></ul> 
+          margin-top:4px;"></ul> 
         </div> 
  
         <div class="card" id="card-projects"> 
           <div class="card-header-main">Past student projects</div> 
           <div class="card-desc">Get ideas by exploring previous work.</div> 
           <ul id="academics-projects-list" style="font-size:12px; color:#e5e7eb; list
-style:none; margin-top:4px;"></ul> 
+          style:none; margin-top:4px;"></ul> 
         </div> 
  
         <div class="card" id="card-helplines"> 
           <div class="card-header-main">Helplines</div> 
           <div class="card-desc">Trusted contacts for mental health support.</div> 
           <ul id="academics-helplines-list" style="font-size:12px; color:#e5e7eb; list
-style:none; margin-top:4px;"></ul> 
+          style:none; margin-top:4px;"></ul> 
         </div> 
+
+        <div class="card" id="card-resources">
+        <div class="card-header-main">General resources</div>
+        <div class="card-desc">Notes, links, and helpful material.</div>
+        <ul id="academics-resources-list" style="font-size:12px; color:#e5e7eb; list-style:none; margin-top:4px;"></ul>
+        </div>
+
+         <div class="card" id="card-saved-resources">
+          <div class="card-header-main">Saved resources</div>
+          <div class="card-desc">Things you bookmarked to revisit later.</div>
+          <ul id="academics-saved-resources-list" style="font-size:12px; color:#e5e7eb; list-style:none; margin-top:4px;"></ul>
+        </div>
       </div> 
     `; 
  
@@ -321,7 +348,7 @@ style:none; margin-top:4px;"></ul>
         projectsData.items.forEach(pr => { 
           const li = document.createElement('li'); 
           li.textContent = `• ${pr.title} (${pr.domain}, ${pr.difficulty}) – 
-${pr.description}`; 
+          ${pr.description}`; 
           projectsUl.appendChild(li); 
         }); 
       } 
@@ -341,11 +368,295 @@ ${pr.description}`;
         }); 
       } 
     } 
+
+    // Fill resources
+    const resourcesUl = document.getElementById('academics-resources-list');
+    if (resourcesUl) {
+
+      const items = (resourcesData && resourcesData.items) || [];
+      if (!items.length) {
+        resourcesUl.innerHTML = '<li>No resources yet.</li>';
+      } else {
+        resourcesUl.innerHTML = '';
+        items.forEach((r) => {
+          const li = document.createElement('li');
+          const title = document.createElement('span');
+          title.textContent = `• ${r.title} (${r.type || ''})`;
+          li.appendChild(title);
+          
+          if (r.url) {
+            const link = document.createElement('a');
+            link.href = r.url;
+            link.target = '_blank';
+            link.style.marginLeft = '4px';
+            link.style.color = '#60a5fa';
+            link.textContent = '[open]';
+            li.appendChild(link);
+          }
+          
+          const btn = document.createElement('button');
+          btn.textContent = 'Save';
+          btn.style.marginLeft = '6px';
+          btn.style.fontSize = '11px';
+          btn.onclick = () => toggleSaveResource(r.id);
+          li.appendChild(btn);
+          
+          resourcesUl.appendChild(li);
+        });
+      }
+    }
+
+    // Fill saved resources
+    const savedUl = document.getElementById('academics-saved-resources-list');
+    if (savedUl) {
+      const items = (savedData && savedData.items) || [];
+      if (!items.length) {
+        savedUl.innerHTML = '<li>You have not saved any resources yet.</li>';
+      } else {
+        savedUl.innerHTML = '';
+        items.forEach((r) => {
+          const li = document.createElement('li');
+          const title = document.createElement('span');
+          title.textContent = `• ${r.title} (${r.type || ''})`;
+          li.appendChild(title);
+          
+          if (r.url) {
+            const link = document.createElement('a');
+            link.href = r.url;
+            link.target = '_blank';
+            link.style.marginLeft = '4px';
+            link.style.color = '#60a5fa';
+            link.textContent = '[open]';
+            li.appendChild(link);
+          }
+          
+          const btn = document.createElement('button');
+          btn.textContent = 'Remove';
+          btn.style.marginLeft = '6px';
+          btn.style.fontSize = '11px';
+          btn.onclick = () => unsaveResource(r.id);   // <-- id (resource), not saved_id
+          li.appendChild(btn);
+          
+          savedUl.appendChild(li);
+        });
+      }
+    }
  
   } catch (e) { 
     console.error('Failed to load academics view', e); 
   } 
 } 
+
+async function toggleSaveResource(resourceId) {
+  try {
+    const res = await fetch("/api/resources/saved", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resource_id: resourceId }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      alert(data.error || "Could not save resource");
+      return;
+    }
+    // Reload academics view so Saved resources card updates
+    loadAcademicsView();
+  } catch (e) {
+    console.error("toggleSaveResource error", e);
+    alert("Could not save resource.");
+  }
+}
+
+async function unsaveResource(resourceId) {
+  if (!window.confirm("Remove this resource from your saved list?")) return;
+  try {
+    const res = await fetch(`/api/resources/saved/${resourceId}`, { method: "DELETE" });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      alert(data.error || "Could not remove resource");
+      return;
+    }
+    // Reload academics view to refresh both lists
+    loadAcademicsView();
+  } catch (e) {
+    console.error("unsaveResource error", e);
+    alert("Could not remove resource.");
+  }
+}
+
+async function loadManageLists() {
+  const noticesContainer = document.getElementById("manage-notices-list");
+  const resourcesContainer = document.getElementById("manage-resources-list");
+  if (!noticesContainer || !resourcesContainer) return;
+
+  noticesContainer.textContent = "Loading...";
+  resourcesContainer.textContent = "Loading...";
+
+  try {
+    const [noticesRes, resourcesRes] = await Promise.all([
+      fetch("/api/admin/notices"),
+      fetch("/api/admin/resources"),
+    ]);
+
+    const noticesData = await noticesRes.json();
+    const resourcesData = await resourcesRes.json();
+
+    // Notices list
+    if (!noticesData.success || !noticesData.items.length) {
+      noticesContainer.textContent = "No notices yet.";
+    } else {
+      noticesContainer.innerHTML = "";
+      noticesData.items.forEach((n) => {
+        const row = document.createElement("div");
+        row.style.marginBottom = "4px";
+        row.innerHTML = `
+          <span>${n.title}</span>
+          <button style="margin-left:8px;font-size:11px;" onclick="editNotice(${n.id})">Edit</button>
+          <button style="margin-left:4px;font-size:11px;" onclick="deleteNotice(${n.id})">Delete</button>
+        `;
+        noticesContainer.appendChild(row);
+      });
+    }
+
+    // Resources list
+    if (!resourcesData.success || !resourcesData.items.length) {
+      resourcesContainer.textContent = "No resources yet.";
+    } else {
+      resourcesContainer.innerHTML = "";
+      resourcesData.items.forEach((r) => {
+        const row = document.createElement("div");
+        row.style.marginBottom = "4px";
+        row.innerHTML = `
+          <span>${r.title} (${r.type || ""})</span>
+          <button style="margin-left:8px;font-size:11px;" onclick="editResource(${r.id})">Edit</button>
+          <button style="margin-left:4px;font-size:11px;" onclick="deleteResource(${r.id})">Delete</button>
+        `;
+        resourcesContainer.appendChild(row);
+      });
+    }
+  } catch (e) {
+    console.error("loadManageLists error", e);
+    noticesContainer.textContent = "Could not load notices.";
+    resourcesContainer.textContent = "Could not load resources.";
+  }
+}
+
+async function openNoticeForm(existing) {
+  const title = window.prompt("Notice title:", existing ? existing.title : "");
+  if (!title) return;
+  const description = window.prompt("Description:", existing ? existing.description : "");
+  const payload = { title, description };
+  try {
+    const url = existing ? `/api/admin/notices/${existing.id}` : "/api/admin/notices";
+    const method = existing ? "PUT" : "POST";
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      alert(data.error || "Failed to save notice");
+      return;
+    }
+    loadManageLists();
+  } catch (e) {
+    console.error("openNoticeForm error", e);
+    alert("Could not save notice.");
+  }
+}
+
+async function editNotice(id) {
+  // You can fetch details from the admin list instead of separate API
+  const noticesContainer = document.getElementById("manage-notices-list");
+  const rows = noticesContainer.querySelectorAll("div");
+  let existing = null;
+  rows.forEach((row) => {
+    if (row.innerHTML.includes(`editNotice(${id})`)) {
+      const title = row.querySelector("span").textContent;
+      existing = { id, title, description: "" }; // description not shown; you can improve later
+    }
+  });
+  if (!existing) existing = { id, title: "", description: "" };
+  openNoticeForm(existing);
+}
+
+async function deleteNotice(id) {
+  if (!window.confirm("Delete this notice?")) return;
+  try {
+    const res = await fetch(`/api/admin/notices/${id}`, { method: "DELETE" });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      alert(data.error || "Failed to delete");
+      return;
+    }
+    loadManageLists();
+  } catch (e) {
+    console.error("deleteNotice error", e);
+    alert("Could not delete notice.");
+  }
+}
+
+// Resources equivalents
+async function openResourceForm(existing) {
+  const title = window.prompt("Resource title:", existing ? existing.title : "");
+  if (!title) return;
+  const type = window.prompt("Type (note/link/pyq/project):", existing ? existing.type : "link");
+  const subject = window.prompt("Subject (optional):", existing ? existing.subject || "" : "");
+  const url = window.prompt("URL (optional):", existing ? existing.url || "" : "");
+  const description = window.prompt("Short description:", existing ? existing.description || "" : "");
+  const payload = { title, type, subject, url, description };
+  try {
+    const urlEndpoint = existing ? `/api/admin/resources/${existing.id}` : "/api/admin/resources";
+    const method = existing ? "PUT" : "POST";
+    const res = await fetch(urlEndpoint, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      alert(data.error || "Failed to save resource");
+      return;
+    }
+    loadManageLists();
+  } catch (e) {
+    console.error("openResourceForm error", e);
+    alert("Could not save resource.");
+  }
+}
+
+async function editResource(id) {
+  // lightweight approach; in a real app you’d store the list in memory
+  const resourcesContainer = document.getElementById("manage-resources-list");
+  const rows = resourcesContainer.querySelectorAll("div");
+  let existing = null;
+  rows.forEach((row) => {
+    if (row.innerHTML.includes(`editResource(${id})`)) {
+      const titlePart = row.querySelector("span").textContent;
+      const title = titlePart.split("(")[0].trim();
+      existing = { id, title, type: "", subject: "", url: "", description: "" };
+    }
+  });
+  if (!existing) existing = { id, title: "", type: "", subject: "", url: "", description: "" };
+  openResourceForm(existing);
+}
+
+async function deleteResource(id) {
+  if (!window.confirm("Delete this resource?")) return;
+  try {
+    const res = await fetch(`/api/admin/resources/${id}`, { method: "DELETE" });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      alert(data.error || "Failed to delete");
+      return;
+    }
+    loadManageLists();
+  } catch (e) {
+    console.error("deleteResource error", e);
+    alert("Could not delete resource.");
+  }
+}
  
 async function loadInsightsView() { 
   const topIntentsUl = document.getElementById("insights-top-intents"); 
@@ -399,7 +710,9 @@ async function loadInsightsView() {
     overallEl.textContent = "Could not load insights. Please try again later."; 
   } 
 } 
- 
+
+
+//-----------right-panel-------------
 async function loadDeadlinesRightPanel() { 
   const container = document.getElementById("deadlines-list"); 
   if (!container) return; 
@@ -441,6 +754,49 @@ async function loadDeadlinesRightPanel() {
       '<div style="font-size:12px;color:#f87171;">Could not load deadlines. Please try again later.</div>'; 
   } 
 } 
+
+async function loadNoticesRightPanel() {
+  const container = document.getElementById("notices-list");
+  if (!container) return;
+
+  container.innerHTML = "Loading...";
+
+  try {
+    const res = await fetch("/api/notices");
+    if (!res.ok) throw new Error("Server error " + res.status);
+    const data = await res.json();
+    const items = data.items || [];
+
+    if (!items.length) {
+      container.innerHTML = '<div style="font-size:12px;color:#9ca3af;">No notices yet.</div>';
+      return;
+    }
+
+    container.innerHTML = "";
+    items.forEach((n) => {
+      const row = document.createElement("div");
+      row.className = "notice-item";
+
+      const titleSpan = document.createElement("span");
+      titleSpan.className = "notice-label";
+      titleSpan.textContent = n.title;
+
+      const descSpan = document.createElement("span");
+      descSpan.style.display = "block";
+      descSpan.style.fontSize = "11px";
+      descSpan.style.color = "#9ca3af";
+      descSpan.textContent = n.description || "";
+
+      row.appendChild(titleSpan);
+      row.appendChild(descSpan);
+      container.appendChild(row);
+    });
+  } catch (e) {
+    console.error("Failed to load notices:", e);
+    container.innerHTML =
+      '<div style="font-size:12px;color:#f87171;">Could not load notices. Please try again later.</div>';
+  }
+}
  
 // -------- LOGOUT -------- 
 function handleLogout() { 
@@ -457,15 +813,15 @@ function switchView(view, navItem) {
     const el = document.getElementById(`view-${v}`); 
     if (el) el.style.display = v === view ? "block" : "none"; 
   }); 
- 
+
   document.querySelectorAll(".nav-item").forEach((item) => { 
     item.classList.remove("active"); 
   }); 
   if (navItem) navItem.classList.add("active"); 
- 
+
   const titleEl = document.getElementById("center-title"); 
   const subEl = document.getElementById("center-subtitle"); 
- 
+
   if (view === "chat") { 
     titleEl.textContent = "Chat"; 
     subEl.textContent = SUBTITLE_TEXT.chat; 
@@ -480,6 +836,7 @@ function switchView(view, navItem) {
   } else if (view === "manage") { 
     titleEl.textContent = "Manage content"; 
     subEl.textContent = SUBTITLE_TEXT.manage; 
+    loadManageLists();             // <-- added here
   } else if (view === "settings") { 
     titleEl.textContent = "Settings"; 
     subEl.textContent = SUBTITLE_TEXT.settings; 
@@ -487,8 +844,8 @@ function switchView(view, navItem) {
     titleEl.textContent = "Profile"; 
     subEl.textContent = SUBTITLE_TEXT.profile; 
     loadProfile(); 
-  } 
-} 
+  }
+}
  
 async function loadProfile() { 
   const statusEl = document.getElementById("profile-status"); 

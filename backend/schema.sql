@@ -198,3 +198,29 @@ CREATE TABLE complaints (
     status TEXT DEFAULT 'Pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Generic academic resources (notes, links, docs, videos, etc.)
+CREATE TABLE IF NOT EXISTS resources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    type TEXT NOT NULL,              -- 'note', 'syllabus', 'pyq', 'project', 'link', etc.
+    subject TEXT,                    -- e.g. 'DBMS'
+    semester INTEGER,
+    program TEXT,                    -- e.g. 'B.Tech CSE'
+    url TEXT,                        -- optional link
+    description TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    visible_to TEXT DEFAULT 'student'  -- 'student', 'admin', 'all'
+);
+
+-- Saved / bookmarked resources per user
+CREATE TABLE IF NOT EXISTS saved_resources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    resource_id INTEGER NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, resource_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE CASCADE
+);

@@ -27,7 +27,17 @@ def close_db(e=None):
 def get_notices():
     db = get_db()
     rows = db.execute(
-        "SELECT title, description FROM notices"
+        """
+        SELECT
+            notice_id AS id,
+            title,
+            description,
+            category,
+            date_posted,
+            visible_to
+        FROM notices
+        ORDER BY date_posted DESC
+        """
     ).fetchall()
     return rows
 
@@ -308,3 +318,88 @@ def get_syllabus_for_course_subject(course: str, subject: str):
         (subject, course),
     ).fetchall()
     return rows
+
+# ----------Resources----------------------
+def get_resources(subject: str | None = None):
+    db = get_db()
+    if subject:
+        rows = db.execute(
+            "SELECT * FROM resources WHERE subject = ? ORDER BY created_at DESC",
+            (subject,),
+        ).fetchall()
+    else:
+        rows = db.execute(
+            "SELECT * FROM resources ORDER BY created_at DESC"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+def get_resource_by_id(resource_id: int):
+    db = get_db()
+    row = db.execute(
+        "SELECT * FROM resources WHERE id = ?",
+        (resource_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+def create_resource(title, type_, subject, semester, program, url, description, visible_to):
+    db = get_db()
+    cur = db.execute(
+        """
+        INSERT INTO resources (title, type, subject, semester, program, url, description, visible_to)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (title, type_, subject, semester, program, url, description, visible_to),
+    )
+    db.commit()
+    return cur.lastrowid
+
+def update_resource(resource_id, title, type_, subject, semester, program, url, description, visible_to):
+    db = get_db()
+    db.execute(
+        """
+        UPDATE resources
+        SET title = ?, type = ?, subject = ?, semester = ?, program = ?, url = ?, description = ?, updated_at = CURRENT_TIMESTAMP, visible_to = ?
+        WHERE id = ?
+        """,
+        (title, type_, subject, semester, program, url, description, visible_to, resource_id),
+    )
+    db.commit()
+
+def delete_resource(resource_id: int):
+    db = get_db()
+    db.execute("DELETE FROM resources WHERE id = ?", (resource_id,))
+    db.commit()
+
+#------------ Saved resources------------------
+def get_saved_resources_for_user(user_id: int):
+    db = get_db()
+    rows = db.execute(
+        """
+        SELECT sr.id as saved_id, r.*
+        FROM saved_resources sr
+        JOIN resources r ON sr.resource_id = r.id
+        WHERE sr.user_id = ?
+        ORDER BY sr.created_at DESC
+        """,
+        (user_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+def save_resource_for_user(user_id: int, resource_id: int):
+    db = get_db()
+    db.execute(
+        """
+        INSERT OR IGNORE INTO saved_resources (user_id, resource_id)
+        VALUES (?, ?)
+        """,
+        (user_id, resource_id),
+    )
+    db.commit()
+
+def remove_saved_resource(user_id: int, resource_id: int):
+    db = get_db()
+    db.execute(
+        "DELETE FROM saved_resources WHERE user_id = ? AND resource_id = ?",
+        (user_id, resource_id),
+    )
+    db.commit()

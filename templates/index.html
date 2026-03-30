@@ -186,19 +186,21 @@
 
               <!-- MANAGE CONTENT (ADMIN) -->
               <div id="view-manage" style="display:none;">
-                <div class="card">
-                  <div class="card-header-main">Manage notices</div>
-                  <div class="card-desc">Create, edit, or remove notices visible to students.</div>
-                  <button class="btn btn-primary" type="button" onclick="alert('Open add notice dialog')">Add notice</button>
-                </div>
+               <div class="card">
+                <div class="card-header-main">Manage notices</div>
+                <div class="card-desc">Create, edit, or remove notices visible to students.</div>
+                <div id="manage-notices-list" style="font-size:12px; margin-bottom:8px;"></div>
+                <button class="btn btn-primary" type="button" onclick="openNoticeForm()">Add notice</button>
+              </div>
 
-                <br />
-
-                <div class="card">
-                  <div class="card-header-main">Manage resources</div>
-                  <div class="card-desc">Upload PYQs, update syllabus, add project summaries.</div>
-                  <button class="btn btn-primary" type="button" onclick="alert('Open add resource dialog')">Add resource</button>
-                </div>
+              <br />
+              
+              <div class="card">
+                <div class="card-header-main">Manage resources</div>
+                <div class="card-desc">Upload PYQs, update syllabus, add project summaries.</div>
+                <div id="manage-resources-list" style="font-size:12px; margin-bottom:8px;"></div>
+                <button class="btn btn-primary" type="button" onclick="openResourceForm()">Add resource</button>
+              </div>
 
                 <br>
 

@@ -31,6 +31,15 @@ from backend.db import (
     get_or_create_user_settings,
     update_user_settings,
     get_deadlines_for_student, 
+    get_resources,
+    get_resource_by_id,
+    create_resource,
+    update_resource,
+    delete_resource,
+    get_saved_resources_for_user,
+    save_resource_for_user,
+    remove_saved_resource,
+
 )
 from backend.chatbot import get_llm_response # now returns (reply, intent, mood)
 LOGIN_WINDOW_SECONDS = 60        # time window
@@ -122,10 +131,11 @@ def require_admin():
     if not user_id:
         abort(401)
     db = get_db()
-    cur = db.execute("SELECT role FROM users WHERE id = ?", (user_id,))
-    row = cur.fetchone()
-    if not row or row["role"] != "admin":
+    cur = db.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    user = cur.fetchone()
+    if not user or user["role"] != "admin":
         abort(403)
+    return user
 
 def require_login():
     user_id = session.get("user_id")
@@ -561,13 +571,17 @@ def api_create_deadline():
     except Exception:
         logger.exception("Error adding deadline:")
         return jsonify(success=False, error="Failed to add deadline"), 500
+    
 
 # ---------- ACADEMIC DATA APIs (team DB integrated) ----------
 @app.get("/api/academic/notices")
 def api_academic_notices():
     try:
         rows = get_notices()
-        items = [{"title": r["title"], "description": r["description"]} for r in rows]
+        items = [
+            {"title": r["title"], "description": r["description"]}
+            for r in rows
+        ]
         return jsonify({"items": items})
     except Exception:
         logger.exception("Error in /api/academic/notices:")
@@ -657,6 +671,151 @@ def api_academic_helplines():
     except Exception:
         logger.exception("Error in /api/academic/helplines:")
         return jsonify({"items": []}), 500
+    
+
+# ---------- ADMIN: notice CRUD ----------
+@app.route("/api/admin/notices", methods=["GET"])
+def admin_list_notices():
+    require_admin()
+    rows = get_notices()
+    items = [dict(r) for r in rows] if rows else []
+    return jsonify({"success": True, "items": items})
+
+@app.route("/api/admin/notices", methods=["POST"])
+def admin_create_notice():
+    require_admin()  # we don't actually need the admin object here
+    data = request.get_json() or {}
+    title = data.get("title", "").strip()
+    description = data.get("description", "").strip()
+    if not title:
+        return jsonify({"success": False, "error": "Title is required"}), 400
+
+    category = (data.get("category") or "").strip() or "general"
+    visible_to = (data.get("visible_to") or "").strip() or "student"
+
+    db = get_db()
+    cur = db.execute(
+        """
+        INSERT INTO notices (title, description, category, date_posted, visible_to)
+        VALUES (?, ?, ?, DATE('now'), ?)
+        """,
+        (title, description, category, visible_to),
+    )
+    db.commit()
+    return jsonify({"success": True, "id": cur.lastrowid})
+
+@app.route("/api/admin/notices/<int:notice_id>", methods=["PUT"])
+def admin_update_notice(notice_id):
+    require_admin()
+    data = request.get_json() or {}
+    title = data.get("title", "").strip()
+    description = data.get("description", "").strip()
+    if not title:
+        return jsonify({"success": False, "error": "Title is required"}), 400
+    db = get_db()
+    db.execute(
+        "UPDATE notices SET title = ?, description = ? WHERE notice_id = ?",
+        (title, description, notice_id),
+    )
+    db.commit()
+    return jsonify({"success": True})
+
+@app.route("/api/admin/notices/<int:notice_id>", methods=["DELETE"])
+def admin_delete_notice(notice_id):
+    require_admin()
+    db = get_db()
+    db.execute("DELETE FROM notices WHERE notice_id = ?", (notice_id,))
+    db.commit()
+    return jsonify({"success": True})
+
+
+# ---------- ADMIN: Resources CRUD ----------
+@app.route("/api/resources", methods=["GET"])
+def list_resources():
+    subject = request.args.get("subject")
+    items = get_resources(subject)
+    return jsonify({"success": True, "items": items})
+
+@app.route("/api/admin/resources", methods=["GET"])
+def admin_list_resources():
+    require_admin()
+    items = get_resources()
+    return jsonify({"success": True, "items": items})
+
+@app.route("/api/admin/resources", methods=["POST"])
+def admin_create_resource():
+    require_admin()
+    data = request.get_json() or {}
+    title = data.get("title", "").strip()
+    type_ = data.get("type", "").strip() or "link"
+    subject = data.get("subject")
+    semester = data.get("semester")
+    program = data.get("program")
+    url = data.get("url")
+    description = data.get("description")
+    visible_to = data.get("visible_to", "student")
+    if not title:
+        return jsonify({"success": False, "error": "Title is required"}), 400
+    new_id = create_resource(
+        title, type_, subject, semester, program, url, description, visible_to
+    )
+    return jsonify({"success": True, "id": new_id})
+
+@app.route("/api/admin/resources/<int:resource_id>", methods=["PUT"])
+def admin_update_resource(resource_id):
+    require_admin()
+    data = request.get_json() or {}
+    # Fetch existing to allow partial updates
+    existing = get_resource_by_id(resource_id)
+    if not existing:
+        return jsonify({"success": False, "error": "Resource not found"}), 404
+    title = data.get("title", existing["title"]).strip()
+    type_ = data.get("type", existing["type"]).strip()
+    subject = data.get("subject", existing["subject"])
+    semester = data.get("semester", existing["semester"])
+    program = data.get("program", existing["program"])
+    url = data.get("url", existing["url"])
+    description = data.get("description", existing["description"])
+    visible_to = data.get("visible_to", existing["visible_to"])
+    update_resource(resource_id, title, type_, subject, semester, program, url, description, visible_to)
+    return jsonify({"success": True})
+
+@app.route("/api/admin/resources/<int:resource_id>", methods=["DELETE"])
+def admin_delete_resource(resource_id):
+    require_admin()
+    delete_resource(resource_id)
+    return jsonify({"success": True})
+
+
+# ---------- Saved resources APIs ----------
+@app.route("/api/resources/saved", methods=["GET"])
+def get_saved_resources():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Not logged in"}), 401
+    items = get_saved_resources_for_user(user_id)
+    return jsonify({"success": True, "items": items})
+
+@app.route("/api/resources/saved", methods=["POST"])
+def add_saved_resource():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Not logged in"}), 401
+    data = request.get_json() or {}
+    resource_id = data.get("resource_id")
+    if not resource_id:
+        return jsonify({"success": False, "error": "resource_id is required"}), 400
+    save_resource_for_user(user_id, resource_id)
+    return jsonify({"success": True})
+
+@app.route("/api/resources/saved/<int:resource_id>", methods=["DELETE"])
+def delete_saved_resource(resource_id):
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Not logged in"}), 401
+    remove_saved_resource(user_id, resource_id)
+    return jsonify({"success": True})
+
 
 # ---------- ADMIN: COMPLAINTS & SUMMARY ----------
 @app.get("/api/admin/complaints")
