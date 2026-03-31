@@ -1,8 +1,10 @@
 # backend/chatbot.py
 import logging
+from typing import List, Dict, Tuple, Optional
 
 from backend.llm_ollama import chat_with_ollama
 from backend.db import get_notices_dict, get_syllabus, get_pyqs, get_projects, get_helplines
+
 logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """
 You are MindMate, a friendly and empathetic campus companion for college students.
@@ -13,6 +15,25 @@ Your goals:
 - If the student sounds in serious danger or crisis, gently suggest they talk to a trusted person
   or a professional helpline.
 """
+
+INTENT_LABELS = [
+    "notices",
+    "syllabus",
+    "pyqs",
+    "projects",
+    "helplines",
+    "exam_stress",
+    "wellbeing",
+    "general",
+]
+
+MOOD_LABELS = [
+    "crisis_risk",
+    "negative",
+    "neutral",
+    "positive",
+]
+
 
 # ---------- Keyword maps for intents and mood ----------
 
@@ -32,8 +53,12 @@ NEGATIVE_KEYWORDS = [
 ]
 
 CRISIS_KEYWORDS = [
-    "suicide", "kill myself", "end my life", "self harm", "self-harm",
+    "suicide", "suicidal", "kill myself", "end my life", "self harm", "self-harm",
     "cut myself", "jump off", "no reason to live", "life is pointless",
+    "harm myself", "cut myself", "cutting myself", "life is pointless", "life is not worth",
+    "end my life", "ending my life", "end it all", "don't want to live", 
+    "dont want to live", "no reason to live", "no point in living",
+    "kill myself", "harm myself", "i want to die", "i wanna die",
 ]
 
 EXAM_STRESS_KEYWORDS = [
@@ -56,6 +81,8 @@ def detect_intent_and_mood(user_text: str) -> tuple[str, str]:
     mood = "neutral"
     if any(kw in text for kw in CRISIS_KEYWORDS):
         mood = "crisis_risk"
+    elif any(kw in text for kw in CRISIS_KEYWORDS):
+        mood = "crisis_risk"
     elif any(kw in text for kw in NEGATIVE_KEYWORDS):
         mood = "negative"
 
@@ -73,6 +100,123 @@ def detect_intent_and_mood(user_text: str) -> tuple[str, str]:
         return "wellbeing", mood
 
     return "general", mood
+
+DEBUG_CLASSIFIER = False  # set True only when you want to test the LLM classifier
+
+def classify_intent_and_mood(user_text: str) -> Tuple[str, str]:
+    """
+    Hybrid classifier:
+    1) Use fast keyword rules.
+    2) Optionally (debug) ask the LLM classifier.
+    """
+    intent, mood = detect_intent_and_mood(user_text)
+
+    if not DEBUG_CLASSIFIER:
+        return intent, mood
+
+    # Heuristic: call LLM only when rules look unsure
+    text = user_text.lower()
+    looks_emotional = any(
+        w in text
+        for w in ["feel", "feeling", "cry", "sad", "depressed", "anxious", "hopeless", "worthless"]
+    )
+
+    if intent == "general" or (mood == "neutral" and looks_emotional):
+        try:
+            llm_intent, llm_mood = llm_classify_intent_and_mood(user_text)
+            if llm_intent in INTENT_LABELS and llm_intent != "general":
+                intent = llm_intent
+            if llm_mood in MOOD_LABELS and llm_mood != "neutral":
+                mood = llm_mood
+        except Exception:
+            logger.exception("Error in LLM hybrid classifier")
+
+    return intent, mood
+
+
+def build_context_prompt(history: List[Dict[str, str]], language: str) -> str:
+    """
+    Turn recent conversation into a short context block
+    and add language instructions.
+    history: list of {'role': 'user'|'bot', 'text': str}
+    """
+    history = history or []
+
+    # Language instruction
+    lang_instruction = ""
+    if language and language != "auto":
+        if language.startswith("hi"):
+            lang_instruction = (
+                "Respond primarily in Hindi (simple and friendly), but you may mix English "
+                "for technical or academic terms.\n"
+            )
+        elif language.startswith("en"):
+            lang_instruction = "Respond in clear, simple English.\n"
+
+    if not history:
+        return lang_instruction
+
+    lines = []
+    # Take last 6 turns to keep prompt short
+    for turn in history[-4:]:
+        role = "Student" if turn.get("role") == "user" else "MindMate"
+        text = turn.get("text", "")
+        lines.append(f"{role}: {text}")
+
+    history_text = "\n".join(lines)
+
+    return (
+        lang_instruction
+        + "Here is the recent conversation between the student and MindMate:\n"
+        + history_text
+        + "\n\nContinue the conversation in a supportive, kind tone.\n"
+    )
+
+def llm_classify_intent_and_mood(user_text: str) -> Tuple[str, str]:
+    """
+    Use the LLM as a classifier to refine intent/mood.
+    Returns (intent, mood).
+    """
+    system_msg = (
+        "You are a classifier for a mental health + academic assistant called MindMate. "
+        "You ONLY output JSON. "
+        "Given a student's message, label:\n"
+        f"- intent: one of {INTENT_LABELS}\n"
+        f"- mood: one of {MOOD_LABELS}\n"
+        "Explain nothing. Do not add extra keys."
+    )
+
+    user_msg = (
+        "Message: " + user_text + "\n\n"
+        "Return JSON like: {\"intent\": \"exam_stress\", \"mood\": \"negative\"}"
+    )
+
+    messages = [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": user_msg},
+    ]
+
+    try:
+        raw = chat_with_ollama(messages).strip()
+    except Exception:
+        logger.exception("LLM intent classifier error:")
+        return "general", "neutral"
+
+    import json
+
+    intent = "general"
+    mood = "neutral"
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            if data.get("intent") in INTENT_LABELS:
+                intent = data["intent"]
+            if data.get("mood") in MOOD_LABELS:
+                mood = data["mood"]
+    except Exception:
+        logger.warning("Could not parse classifier JSON: %r", raw)
+
+    return intent, mood
 
 def rule_based_academics_reply(user_text: str) -> tuple[str | None, str | None]:
     """
@@ -162,11 +306,19 @@ def rule_based_academics_reply(user_text: str) -> tuple[str | None, str | None]:
 
     return None, None
 
-def get_llm_response(user_text: str, mode: str = "auto") -> tuple[str, str, str]:
+def get_llm_response(
+    user_text: str,
+    mode: str = "auto",
+    language: str = "auto",
+    history: Optional[List[Dict[str, str]]] = None,
+) -> tuple[str, str, str]:
     """
     Main entry for the backend.
     Returns (reply_text, intent, mood_tag).
+
     mode: "auto", "wellbeing", "academics"
+    language: "auto", "en", "hi", etc. (from user settings)
+    history: recent conversation [{'role': 'user'|'bot', 'text': str}, ...]
     """
     if not user_text.strip():
         return "Please type something so I can help.", "general", "neutral"
@@ -176,8 +328,10 @@ def get_llm_response(user_text: str, mode: str = "auto") -> tuple[str, str, str]
     if mode not in ("auto", "wellbeing", "academics"):
         mode = "auto"
 
-    # Detect intent + mood (existing helper)
-    intent, mood = detect_intent_and_mood(user_text)
+    history = history or []
+
+    # 1) Detect intent + mood via classifier wrapper
+    intent, mood = classify_intent_and_mood(user_text)
 
     # Adjust intent priority based on mode (simple biasing)
     if mode == "wellbeing" and intent in ("pyqs", "projects", "syllabus", "notices", "deadlines", "academics"):
@@ -185,16 +339,15 @@ def get_llm_response(user_text: str, mode: str = "auto") -> tuple[str, str, str]
     elif mode == "academics" and intent not in ("pyqs", "projects", "syllabus", "notices", "deadlines"):
         intent = "academics"
 
-    # Rule-based academic / utility reply first (reuse your existing logic)
+    # 2) Rule-based academic / utility reply first
     rb_reply, rb_intent = rule_based_academics_reply(user_text)
     if rb_reply:
-        # If rule-based hit, prefer its specific intent, but keep mood.
         final_intent = rb_intent or intent
-        # If mode is wellbeing but rule-based says academics, keep academics (since user explicitly asked)
         return rb_reply, final_intent, mood
 
-    # Build system prompt based on mode
+    # 3) Build system prompt based on mode and mood
     system_prompt = SYSTEM_PROMPT
+
     if mode == "wellbeing":
         system_prompt += (
             "\nYou are currently in WELLBEING mode: "
@@ -208,16 +361,38 @@ def get_llm_response(user_text: str, mode: str = "auto") -> tuple[str, str, str]
             "Still be kind and supportive, but focus mainly on academic clarity."
         )
 
+    if mood == "crisis_risk":
+        system_prompt += (
+            "\nThe student may be at some risk or talking about self-harm. "
+            "Stay very gentle, encourage them to reach out to a trusted person or professional, "
+            "and do not provide instructions for self-harm."
+        )
+    elif mood == "negative":
+        system_prompt += (
+            "\nThe student seems low, anxious, or stressed. "
+            "Validate their feelings and offer simple, practical coping steps."
+        )
+
+    # 4) Add conversation context and language preference
+    context_prompt = build_context_prompt(history, language)
+
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_text},
     ]
+    if context_prompt:
+        messages.append({"role": "system", "content": context_prompt})
+    messages.append({"role": "user", "content": user_text})
 
+    # 5) Call LLM
     try:
         reply = chat_with_ollama(messages).strip()
     except Exception:
         logger.exception("LLM error:")
-        reply = "Sorry, I had trouble generating a response just now. Please try again in a moment."
+        reply = (
+            "I'm having a bit of trouble thinking right now, but I'm here with you. "
+            "Could you try rephrasing or asking in a slightly different way? "
+            "Or please try again in a moment."
+        )
 
     return reply, intent, mood
 

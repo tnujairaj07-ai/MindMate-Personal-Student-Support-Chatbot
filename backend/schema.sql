@@ -232,3 +232,14 @@ CREATE TABLE saved_resources (
     saved_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+
+CREATE TABLE IF NOT EXISTS intent_labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    message_text TEXT NOT NULL,
+    intent TEXT NOT NULL,
+    mood TEXT NOT NULL,
+    source TEXT NOT NULL, -- 'rule', 'llm', 'manual'
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);

@@ -397,16 +397,59 @@ def api_chat():
             )
 
     try:
-        # TEMP: force an error here for testing
-        # (uncomment this line when you want to test logging)
-        # raise RuntimeError("Intentional test error in /api/chat")
+        # --- NEW: load preferred_language from settings ---
+        preferred_language = "auto"
+        if user_id:
+            try:
+                user_settings = get_or_create_user_settings(user_id)
+                preferred_language = user_settings.get("preferred_language") or "auto"
+            except Exception:
+                preferred_language = "auto"
+
+        # --- NEW: build short conversation history for context ---
+        history = []
+        if user_id:
+            db = get_db()
+            rows = db.execute(
+                """
+                SELECT role, text
+                FROM messages
+                WHERE user_id = ?
+                ORDER BY id DESC
+                LIMIT 6
+                """,
+                (user_id,),
+            ).fetchall()
+            # oldest → newest
+            for row in reversed(rows):
+                history.append({"role": row["role"], "text": row["text"]})
 
         # Save user message (linked to user)
         if user_id:
             save_message(user_id, message, "user", None)
 
-        # Get reply, intent, mood from chatbot
-        reply, intent, mood = get_llm_response(message, mode=mode)
+        # Get reply, intent, mood from chatbot  (signature extended)
+        reply, intent, mood = get_llm_response(
+            message,
+            mode=mode,
+            language=preferred_language,
+            history=history,
+        )
+
+        # Save classifier output for future analysis/training
+        try:
+            db = get_db()
+            db.execute(
+                """
+                INSERT INTO intent_labels (user_id, message_text, intent, mood, source)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (user_id, message, intent, mood, "hybrid"),
+            )
+            db.commit()
+        except Exception:
+            logger.exception("Could not store intent_labels row")
+        
 
         # Save bot reply with intent
         if user_id:
@@ -437,6 +480,7 @@ def api_chat():
             ),
             500,
         )
+    
 
 @app.post("/api/studyplan")
 def api_studyplan():
