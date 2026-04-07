@@ -547,6 +547,128 @@ async function loadManageLists() {
   }
 }
 
+async function loadAdminComplaints() {
+  const container = document.getElementById("admin-complaints-list");
+  const statusFilter = document.getElementById("complaints-filter-status");
+  if (!container) return;
+
+  container.textContent = "Loading...";
+  const status = statusFilter ? statusFilter.value : "";
+
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  try {
+    const res = await fetch(`/api/admin/complaints${qs}`);
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      container.textContent = data.error || "Could not load complaints.";
+      return;
+    }
+    const items = data.items || [];
+    if (!items.length) {
+      container.textContent = "No complaints found for this filter.";
+      return;
+    }
+
+    container.innerHTML = "";
+    items.forEach((c) => {
+      const row = document.createElement("div");
+      row.style.borderBottom = "1px solid #111827";
+      row.style.padding = "4px 0";
+
+      const header = document.createElement("div");
+      header.style.display = "flex";
+      header.style.justifyContent = "space-between";
+      header.style.fontSize = "11px";
+      header.style.color = "#9ca3af";
+      header.textContent = `${c.department || "Unknown"} · ${c.created_at?.slice(0,10) || ""}`;
+      row.appendChild(header);
+
+      const text = document.createElement("div");
+      text.style.marginTop = "2px";
+      text.textContent = c.text;
+      row.appendChild(text);
+
+      const meta = document.createElement("div");
+      meta.style.marginTop = "4px";
+      meta.style.fontSize = "11px";
+      meta.innerHTML =
+        `Status: <strong>${c.status}</strong> · Risk: <strong>${c.risk_level}</strong>`;
+      row.appendChild(meta);
+
+      const controls = document.createElement("div");
+      controls.style.marginTop = "4px";
+      controls.style.fontSize = "11px";
+
+      controls.innerHTML = `
+        <label>Set status:
+          <select onchange="updateComplaintStatus(${c.id}, this.value)">
+            <option value="">Select</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="resolved">Resolved</option>
+          </select>
+        </label>
+        <label style="margin-left:6px;">Risk:
+          <select onchange="updateComplaintRisk(${c.id}, this.value)">
+            <option value="">Select</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+      `;
+      row.appendChild(controls);
+
+      container.appendChild(row);
+    });
+  } catch (e) {
+    console.error("loadAdminComplaints error", e);
+    container.textContent = "Could not load complaints.";
+  }
+}
+
+async function updateComplaintStatus(id, status) {
+  if (!status) return;
+  try {
+    const res = await fetch(`/api/admin/complaints/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      alert(data.error || "Could not update status");
+      return;
+    }
+    loadAdminComplaints();
+    loadInsightsView(); // so overview metrics refresh
+  } catch (e) {
+    console.error("updateComplaintStatus error", e);
+    alert("Error updating status");
+  }
+}
+
+async function updateComplaintRisk(id, risk_level) {
+  if (!risk_level) return;
+  try {
+    const res = await fetch(`/api/admin/complaints/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ risk_level }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      alert(data.error || "Could not update risk");
+      return;
+    }
+    loadAdminComplaints();
+    loadInsightsView();
+  } catch (e) {
+    console.error("updateComplaintRisk error", e);
+    alert("Error updating risk level");
+  }
+}
+
 async function openNoticeForm(existing) {
   const title = window.prompt("Notice title:", existing ? existing.title : "");
   if (!title) return;
@@ -664,58 +786,89 @@ async function deleteResource(id) {
   }
 }
  
-async function loadInsightsView() { 
-  const topIntentsUl = document.getElementById("insights-top-intents"); 
-  const complaintsUl = document.getElementById("insights-complaints-dept"); 
-  const overallEl = document.getElementById("insights-overall"); 
- 
-  if (!topIntentsUl || !complaintsUl || !overallEl) return; 
- 
-  overallEl.textContent = "Loading..."; 
-  topIntentsUl.innerHTML = ""; 
-  complaintsUl.innerHTML = ""; 
- 
-  try { 
-    const res = await fetch("/api/insights/overview"); 
-    if (!res.ok) throw new Error("Server error " + res.status); 
-    const data = await res.json(); 
- 
-    const intents = data.intents || []; 
-    const complaints = data.complaints_by_department || []; 
- 
-    // Simple overall metric: total intent messages 
-    const totalIntentMsgs = intents.reduce((sum, x) => sum + (x.count || 0), 0); 
-    overallEl.textContent = 
-      totalIntentMsgs > 0 
-        ? `Total tagged chat messages: ${totalIntentMsgs}` 
-        : "Not enough data yet. Students haven’t chatted much so far."; 
- 
-    // Top intents list 
-    if (!intents.length) { 
-      topIntentsUl.innerHTML = "<li>No intent data yet.</li>"; 
-    } else { 
-      intents.forEach((it) => { 
-        const li = document.createElement("li"); 
-        li.textContent = `${it.intent}: ${it.count}`; 
-        topIntentsUl.appendChild(li); 
-      }); 
-    } 
- 
-    // Complaints by department 
-    if (!complaints.length) { 
-      complaintsUl.innerHTML = "<li>No complaints submitted yet.</li>"; 
-    } else { 
-      complaints.forEach((c) => { 
-        const li = document.createElement("li"); 
-        li.textContent = `${c.department}: ${c.count}`; 
-        complaintsUl.appendChild(li); 
-      }); 
-    } 
-  } catch (e) { 
-    console.error("Failed to load insights:", e); 
-    overallEl.textContent = "Could not load insights. Please try again later."; 
-  } 
-} 
+async function loadInsightsView() {
+  const topIntentsUl = document.getElementById("insights-top-intents");
+  const complaintsUl = document.getElementById("insights-complaints-dept");
+  const crisisScoreEl = document.getElementById("insights-crisis-score");
+  const crisisCaptionEl = document.getElementById("insights-crisis-caption");
+  const timeseriesEl = document.getElementById("insights-timeseries");
+
+  if (!topIntentsUl || !complaintsUl || !crisisScoreEl || !crisisCaptionEl || !timeseriesEl) return;
+
+  crisisScoreEl.textContent = "–";
+  crisisCaptionEl.textContent = "Loading...";
+  topIntentsUl.innerHTML = "";
+  complaintsUl.innerHTML = "";
+  timeseriesEl.textContent = "Loading...";
+
+  try {
+    // Overview with crisis metrics
+    const resOverview = await fetch("/api/insights/overview");
+    if (!resOverview.ok) throw new Error("Server error " + resOverview.status);
+    const dataOverview = await resOverview.json();
+
+    const intents = dataOverview.intents || [];
+    const complaints = dataOverview.complaints_by_department || [];
+    const metrics = dataOverview.metrics || {};
+    const crisisScore = metrics.crisis_score ?? 0;
+    const highRisk = metrics.high_risk_complaints ?? 0;
+    const openComplaints = metrics.open_complaints ?? 0;
+
+    crisisScoreEl.textContent = crisisScore;
+    crisisCaptionEl.textContent =
+      `High‑risk complaints: ${highRisk} · Open complaints: ${openComplaints}`;
+
+    // Top intents
+    if (!intents.length) {
+      topIntentsUl.innerHTML = "<li>No intent data yet.</li>";
+    } else {
+      intents.forEach((it) => {
+        const li = document.createElement("li");
+        li.textContent = `${it.intent}: ${it.count}`;
+        topIntentsUl.appendChild(li);
+      });
+    }
+
+    // Complaints by department
+    if (!complaints.length) {
+      complaintsUl.innerHTML = "<li>No complaints submitted yet.</li>";
+    } else {
+      complaints.forEach((c) => {
+        const li = document.createElement("li");
+        li.textContent = `${c.department}: ${c.count}`;
+        complaintsUl.appendChild(li);
+      });
+    }
+
+    // Time‑series
+    const resTs = await fetch("/api/insights/timeseries?days=14");
+    if (!resTs.ok) throw new Error("TS server error " + resTs.status);
+    const dataTs = await resTs.json();
+
+    const intentTs = dataTs.intent_timeseries || {};
+    const hrByDate = dataTs.high_risk_by_date || {};
+    const dates = Object.keys(intentTs).sort();
+
+    if (!dates.length) {
+      timeseriesEl.textContent = "Not enough data yet to show trends.";
+    } else {
+      let html = "";
+      dates.forEach((d) => {
+        const intentsForDay = intentTs[d];
+        const parts = Object.keys(intentsForDay).map(
+          (intName) => `${intName}: ${intentsForDay[intName]}`
+        );
+        const hr = hrByDate[d] || 0;
+        html += `<div style="margin-bottom:3px;"><strong>${d}</strong> – ${parts.join(", ")} · high‑risk: ${hr}</div>`;
+      });
+      timeseriesEl.innerHTML = html;
+    }
+  } catch (e) {
+    console.error("Failed to load insights:", e);
+    crisisCaptionEl.textContent = "Could not load insights. Please try again later.";
+    timeseriesEl.textContent = "Error loading trend.";
+  }
+}
 
 
 //-----------right-panel-------------
@@ -843,6 +996,7 @@ function switchView(view, navItem) {
     titleEl.textContent = "Manage content"; 
     subEl.textContent = SUBTITLE_TEXT.manage; 
     loadManageLists();             // <-- added here
+    loadAdminComplaints();
   } else if (view === "settings") { 
     titleEl.textContent = "Settings"; 
     subEl.textContent = SUBTITLE_TEXT.settings; 

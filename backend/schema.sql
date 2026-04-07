@@ -195,8 +195,9 @@ CREATE TABLE complaints (
     roll_no TEXT NOT NULL,
     department TEXT,
     complaint_text TEXT NOT NULL,
-    status TEXT DEFAULT 'Pending',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    status TEXT NOT NULL DEFAULT 'open',
+    risk_level TEXT NOT NULL DEFAULT 'low',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Generic academic resources (notes, links, docs, videos, etc.)
@@ -242,4 +243,11 @@ CREATE TABLE IF NOT EXISTS intent_labels (
     mood TEXT NOT NULL,
     source TEXT NOT NULL, -- 'rule', 'llm', 'manual'
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS intent_stats_daily (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    intent TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0
 );

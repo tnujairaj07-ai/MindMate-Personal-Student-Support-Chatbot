@@ -160,25 +160,31 @@
                   <div class="card">
                     <div class="card-title">Overall wellbeing</div>
                     <div class="card-body">
-                      <div id="insights-overall" style="font-size:12px;color:#d1d5db;">
-                        Loading...
-                      </div>
+                      <div class="metric-value" id="insights-crisis-score">–</div>
+                      <div class="metric-caption" id="insights-crisis-caption">Loading...</div>
                     </div>
                   </div>
+                  
                   <div class="card">
                     <div class="card-title">Top stress topics</div>
                     <div class="card-body">
-                      <ul id="insights-top-intents" style="list-style:none;padding-left:0;font-size:12px;">
-                        <!-- Filled by JS -->
-                      </ul>
+                      <ul id="insights-top-intents" style="list-style:none;padding-left:0;font-size:12px;"></ul>
                     </div>
                   </div>
+                  
                   <div class="card">
                     <div class="card-title">Complaints by department</div>
                     <div class="card-body">
-                      <ul id="insights-complaints-dept" style="list-style:none;padding-left:0;font-size:12px;">
-                        <!-- Filled by JS -->
-                      </ul>
+                      <ul id="insights-complaints-dept" style="list-style:none;padding-left:0;font-size:12px;"></ul>
+                    </div>
+                  </div>
+                  
+                  <div class="card">
+                    <div class="card-title">Last 14 days trend</div>
+                    <div class="card-body">
+                      <div id="insights-timeseries" style="font-size:11px;color:#d1d5db;">
+                        Loading...
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -186,22 +192,22 @@
 
               <!-- MANAGE CONTENT (ADMIN) -->
               <div id="view-manage" style="display:none;">
-               <div class="card">
-                <div class="card-header-main">Manage notices</div>
-                <div class="card-desc">Create, edit, or remove notices visible to students.</div>
-                <div id="manage-notices-list" style="font-size:12px; margin-bottom:8px;"></div>
-                <button class="btn btn-primary" type="button" onclick="openNoticeForm()">Add notice</button>
-              </div>
-
-              <br />
+                <div class="card">
+                  <div class="card-header-main">Manage notices</div>
+                  <div class="card-desc">Create, edit, or remove notices visible to students.</div>
+                  <div id="manage-notices-list" style="font-size:12px; margin-bottom:8px;"></div>
+                  <button class="btn btn-primary" type="button" onclick="openNoticeForm()">Add notice</button>
+                </div>
+                
+                <br />
               
-              <div class="card">
-                <div class="card-header-main">Manage resources</div>
-                <div class="card-desc">Upload PYQs, update syllabus, add project summaries.</div>
-                <div id="manage-resources-list" style="font-size:12px; margin-bottom:8px;"></div>
-                <button class="btn btn-primary" type="button" onclick="openResourceForm()">Add resource</button>
-              </div>
-
+                <div class="card">
+                  <div class="card-header-main">Manage resources</div>
+                  <div class="card-desc">Upload PYQs, update syllabus, add project summaries.</div>
+                  <div id="manage-resources-list" style="font-size:12px; margin-bottom:8px;"></div>
+                  <button class="btn btn-primary" type="button" onclick="openResourceForm()">Add resource</button>
+                </div>
+              
                 <br>
 
                 <div class="card">
@@ -245,6 +251,29 @@
                   </button>
                   <div id="deadline-status" style="font-size:11px;color:#9ca3af;margin-top:6px;"></div>
                 </div>
+
+                <br>
+                
+                <div class="card">
+                  <div class="card-header-main">Complaints workflow</div>
+                  <div class="card-desc">
+                    View anonymous complaints and mark status or risk level.
+                  </div>
+                  
+                  <div style="font-size:12px;margin-bottom:6px;">
+                    Filter:
+                    <select id="complaints-filter-status" onchange="loadAdminComplaints()">
+                      <option value="">All</option>
+                      <option value="open">Open</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="resolved">Resolved</option>
+                    </select>
+                  </div>
+                  
+                  <div id="admin-complaints-list" style="font-size:12px; max-height:220px; overflow-y:auto;">
+                    <!-- Filled by JS -->
+                    </div>
+                  </div>
               </div>
 
               <!-- SETTINGS VIEW -->

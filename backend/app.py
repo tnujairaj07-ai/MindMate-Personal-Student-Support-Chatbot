@@ -901,27 +901,169 @@ def api_submit_complaint():
         logger.exception("Error saving complaint:")
         return jsonify(success=False, error="Failed to save complaint"), 500
     
+@app.route("/api/admin/complaints", methods=["GET"])
+def admin_list_complaints():
+    # TODO: protect with admin auth check
+
+    status = request.args.get("status")      # open/in_progress/resolved or None
+    department = request.args.get("department")
+
+    base_sql = """
+        SELECT id, name, roll_no, department, text, status, risk_level, created_at
+        FROM complaints
+        WHERE 1=1
+    """
+    params = []
+
+    if status:
+        base_sql += " AND status = ?"
+        params.append(status)
+    if department:
+        base_sql += " AND department = ?"
+        params.append(department)
+
+    base_sql += " ORDER BY created_at DESC LIMIT 200"
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(base_sql, params)
+    rows = cur.fetchall()
+
+    items = []
+    for r in rows:
+        items.append({
+            "id": r["id"],
+            "name": r["name"],
+            "roll_no": r["roll_no"],
+            "department": r["department"],
+            "text": r["text"],
+            "status": r["status"],
+            "risk_level": r["risk_level"],
+            "created_at": r["created_at"],
+        })
+    return jsonify({"success": True, "items": items})
+
+@app.route("/api/admin/complaints/<int:complaint_id>", methods=["PUT"])
+def admin_update_complaint(complaint_id):
+    # TODO: protect with admin auth
+    payload = request.get_json(force=True) or {}
+    status = payload.get("status")
+    risk_level = payload.get("risk_level")
+
+    if status not in [None, "open", "in_progress", "resolved"]:
+        return jsonify({"success": False, "error": "Invalid status"}), 400
+    if risk_level not in [None, "low", "medium", "high"]:
+        return jsonify({"success": False, "error": "Invalid risk_level"}), 400
+
+    sets = []
+    params = []
+    if status:
+        sets.append("status = ?")
+        params.append(status)
+    if risk_level:
+        sets.append("risk_level = ?")
+        params.append(risk_level)
+
+    if not sets:
+        return jsonify({"success": False, "error": "Nothing to update"}), 400
+
+    params.append(complaint_id)
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(f"UPDATE complaints SET {', '.join(sets)} WHERE id = ?", params)
+    conn.commit()
+
+    return jsonify({"success": True})
+    
 # ---------- INSIGHTS ----------
 @app.get("/api/insights/overview")
 def api_insights_overview():
-    # Complaints grouped by department
+    conn = get_db()
+    cur = conn.cursor()
+
+    # Complaints grouped by department (you already had this via get_complaints_by_department)
     comp_rows = get_complaints_by_department()
     complaints_by_dept = [
         {"department": r["department"] or "Unknown", "count": r["count"]}
         for r in comp_rows
     ]
 
-    # Top intents from messages
+    # Top intents from messages (you already had this via get_intent_counts)
     intent_rows = get_intent_counts()
     intents = [
         {"intent": r["intent"] or "unknown", "count": r["count"]}
         for r in intent_rows
     ]
 
+    # --- New: crisis metrics section ---
+
+    # 1) total high‑risk complaints (risk_level = 'high')
+    cur.execute("SELECT COUNT(*) AS c FROM complaints WHERE risk_level = 'high'")
+    row = cur.fetchone()
+    high_risk_complaints = row["c"] if row else 0
+
+    # 2) total open complaints (status = 'open')
+    cur.execute("SELECT COUNT(*) AS c FROM complaints WHERE status = 'open'")
+    row = cur.fetchone()
+    open_complaints = row["c"] if row else 0
+
+    # 3) simple crisis score (you can tune this formula later)
+    crisis_score = min(100, high_risk_complaints * 10)
+
     return jsonify(
         complaints_by_department=complaints_by_dept,
         intents=intents,
+        metrics={
+            "high_risk_complaints": high_risk_complaints,
+            "open_complaints": open_complaints,
+            "crisis_score": crisis_score,
+        },
     )
+
+@app.route("/api/insights/timeseries", methods=["GET"])
+def insights_timeseries():
+    """
+    Returns daily counts of intents and high-risk signals for the last N days.
+    """
+    days = int(request.args.get("days", 14))
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT date, intent, count
+        FROM intent_stats_daily
+        WHERE date >= date('now', ?)
+        ORDER BY date ASC
+    """, (f"-{days} days",))
+    rows = cur.fetchall()
+
+    timeseries = {}
+    for r in rows:
+        d = r["date"]
+        if d not in timeseries:
+            timeseries[d] = {}
+        timeseries[d][r["intent"]] = r["count"]
+
+    # high-risk complaint counts per day
+    cur.execute("""
+        SELECT substr(created_at, 1, 10) as date, COUNT(*) as count
+        FROM complaints
+        WHERE risk_level = 'high'
+          AND date >= date('now', ?)
+        GROUP BY substr(created_at, 1, 10)
+        ORDER BY date ASC
+    """, (f"-{days} days",))
+    hr_rows = cur.fetchall()
+    high_risk_by_date = {r["date"]: r["count"] for r in hr_rows}
+
+    return jsonify({
+        "success": True,
+        "days": days,
+        "intent_timeseries": timeseries,
+        "high_risk_by_date": high_risk_by_date
+    })
 
 if __name__ == "__main__":
     app.run(debug=True)

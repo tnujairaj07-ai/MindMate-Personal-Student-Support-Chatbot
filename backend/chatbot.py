@@ -298,7 +298,7 @@ def rule_based_academics_reply(user_text: str) -> tuple[str | None, str | None]:
 
         reply_lines = ["Here are some mental health helplines you can contact:"]
         for r in rows:
-            reply_lines.append(f"- {r['name']} ({r['availablehours']}): {r['phone']}")
+            reply_lines.append(f"- {r['name']} ({r['available_hours']}): {r['phone']}")
         reply_lines.append(
             "If you feel in serious danger, please contact emergency services or a trusted person immediately."
         )
